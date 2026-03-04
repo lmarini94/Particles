@@ -324,8 +324,8 @@ run_dir.mkdir(parents=True, exist_ok=True)
 # ADD TIMING PARAMENTERS TO CONFIG AND SAVE TO FOLDER
 config["Created_at_unix"] = time.time()
 config["Created_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
-config["Simulation duration"] = total_time
-Path(run_dir/"CONFIG.json").write_text(json.dumps(config, indent=2))
+config["Simulation_duration"] = total_time
+Path(run_dir/"run_parameters.json").write_text(json.dumps(config, indent=2))
 
 
 # SAVE DATA FILES
