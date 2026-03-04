@@ -274,13 +274,7 @@ def step (x, y, vx, vy, soft_walls):
     
     
     return x, y, vx, vy
-    
-# def save_metadata(path, **meta):
-#     meta = dict(meta)  # copy
-#     meta["created_at_unix"] = time.time()
-#     meta["created_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
-#     Path(path).write_text(json.dumps(meta, indent=2))
-    
+
 ###############################################################################
 ############################### MAIN EXECUTION ################################
 ###############################################################################
@@ -290,7 +284,6 @@ def step (x, y, vx, vy, soft_walls):
 start_time = time.time()
 states = []
 energies = []
-
 
 x, y = initialize_pos(d_min, soft_walls, delta, rng)
 vx, vy = initialize_vel(K_target, rng)
@@ -307,6 +300,7 @@ while (t_sim <= T_MAX):
     x, y, vx, vy = step(x, y, vx, vy, soft_walls)
     t_sim += h
     t += 1
+print(f"Progress = {(t_sim/T_MAX)*100:.2f}%", end="\r", flush = True)
 total_time = time.time()-start_time
 states = np.array(states)
 energies = np.array(energies) 
@@ -319,54 +313,24 @@ print(f"\nSimulation completed in {formatted_time}")
 ########################## DATA AND METADATA SAVE #############################
 ###############################################################################
 
+state_path = config["outputs"]["states_file"]
+energies_path = config["outputs"]["energies_file"]
+
+# CREATE TIMESTAMPED OUTPUT DIRECTORY
+timestamp = time.strftime("%Y%m%d_%H%M")
+run_dir = Path("run") / timestamp
+run_dir.mkdir(parents=True, exist_ok=True)
+
+# ADD TIMING PARAMENTERS TO CONFIG AND SAVE TO FOLDER
+config["Created_at_unix"] = time.time()
+config["Created_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+config["Simulation duration"] = total_time
+Path(run_dir/"CONFIG.json").write_text(json.dumps(config, indent=2))
 
 
+# SAVE DATA FILES
+np.save(run_dir / state_path, states) 
+np.save(run_dir / energies_path, energies)
 
+print(f"Results saved to: {run_dir}")
 
-# E = energies[:, 4] 
-# dE = E -E[0]                   
-# dE_rel = dE/abs(E[0])
-
-# meta = {
-#         "physical": {
-#             "N": N,
-#             "L": L,
-#             "d_min": d_min,
-#             "K_target": K_target,
-#             "delta": delta,
-#             "k_wall": k_wall,
-#             },
-#         "simulation": {
-#             "h": h,
-#             "eps": eps,
-#             "speed": speed,
-#             "T_MAX": T_MAX,
-#             },
-#         "timing": {
-#             "Sim_duration" : total_time
-#             },
-#         "energy_analysis": {
-#             "E_tot_0": energies[:, 4][0],
-#             "U_int_0": energies[:, 2][0],
-#             "U_wall_0": energies[:, 3][0],
-#             "K_0": energies[:, 1][0],
-#             "rel_max_dev": np.max(np.abs(dE)) / abs(E[0]),
-#             "rel_range":(E.max() - E.min()) / abs(E[0]),
-#             },
-#         "model": {
-#             "pair_potential": "1/r^6 - 1/r^4",
-#             "soft_walls": True,
-#             },
-#         "outputs": {
-#             "states_file": "particles.npy",
-#             "energies_file": "energies.npy",
-#             },
-#         "rng": {
-#             "seed": 25,   # set to None if not used
-#             },
-# }
-
-# save_metadata("run_metadata.json", **meta)
-
-np.save("particles.npy", states) 
-np.save("energies.npy", energies)
