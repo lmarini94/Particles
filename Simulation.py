@@ -14,35 +14,64 @@ from pathlib import Path
 ################################# PARAMETERS ##################################
 ###############################################################################
 
-#PHYSICAL PARAMETERS
-N = 128          #Number of particles
-L = 100         #Size of the box
-d_min = 1.5     #Minimum initial distance between particles
-K_target= 1.5   #The target initial kinetik energy
-delta = 1.0     #Size of buffer zone around the walls
-k_wall = 5.0    #Elastic coefficient of wall
+# LOAD CONFIGURATION FILE
+CONFIG_PATH = Path("CONFIG.json")
+with open(CONFIG_PATH) as f:
+    config = json.load(f)
+    
+#EXTRACT PARAMETERS
 
-#SIMULATION PARAMETER
-h = 0.0005      #Step of the integrator
-eps = 1e-2      #Smoothing parameter for close range interactions
-speed = 1000    #Speed at which we store 
-T_MAX = 700     #Total time of the simulation
+#PHYSICAL PARAMENTERS
+#N -> Number of particles
+#L -> Size of the box
+#d_min -> Min initial dist between particles
+#K_target -> Initial kinetik energy
+#delta -> Size of buffer zone around walls
+#k_wall -> Elastic constant of wall
+
+N = config["physical"]["N"]                     
+L = config["physical"]["L"]                     
+d_min = config["physical"]["d_min"]             
+K_target = config["physical"]["K_target"]       
+delta = config["physical"]["delta"]             
+k_wall = config["physical"]["k_wall"]
+
+#SIMULATION PARAMETERS
+#h -> Pace of the simulation
+#eps -> Smoothing parameter for close range interactions
+#speed -> Speed at which we store positions/energies
+#T_MAX -> Total time of the simulation
+
+h = config["simulation"]["h"]
+eps = config["simulation"]["eps"]
+speed = config["simulation"]["speed"]
+T_MAX = config["simulation"]["T_MAX"]
+seed = config["simulation"]["seed"]
+
+#MODEL PARAMETERS
+soft_walls = config["model"]["soft_walls"]
+
+rng = np.random.default_rng(seed)
+#If "seed":null then seed = None
 
 
 ###############################################################################
 ############################### MAIN FUNCTIONS ################################
 ###############################################################################
 
-def initialize_pos(d_min, rng = None, max_tries = 2000):  
+def initialize_pos(d_min, soft_walls, delta, rng, max_tries = 2000):  
     """
     This function generates N points uniformly in [0, L]x[0, L] so that their 
-    mutual distance is greater than d_min. At every iteration it generates a 
-    new point and ensures that it is distnat more than d_min from previously 
-    placed particles, if not the point is rejected and new attempt is made. 
-    If rejects exceed max_tries function raises Error. 
+    mutual distance is greater than d_min. If soft_walls = True then the points 
+    are generated in a square of side [delta, L-delta]. At every iteration it 
+    generates a new point and ensures that it is distnat more than d_min from 
+    previously placed particles, if not the point is rejected and new attempt 
+    is made. If rejects exceed max_tries function raises Error. 
     """
-    rng = np.random.default_rng() if rng is None else rng
     
+    #If soft_walls = False then sets the buffer zone delta to zero
+    if not soft_walls:
+        delta = 0
     pos = np.empty((N, 2), dtype=float)
     
     placed = 0
@@ -77,12 +106,11 @@ def initialize_pos(d_min, rng = None, max_tries = 2000):
     
     return pos[:, 0], pos[:, 1]
 
-def initialize_vel(K_target, rng = None):
+def initialize_vel(K_target, rng):
     """
     This function initializes veloities of the particles so that the system 
     has a given target kinetik energy K_target
     """
-    rng = np.random.default_rng() if rng is None else rng
     
     #Velocities are ranomly generated according to normal distribution
     vx = rng.normal(0.0, 1.0, N)
@@ -132,16 +160,18 @@ def forces_and_potential_interactions(x, y):
     
     return fx, fy, U
 
-def forces_and_potential_wall(x, y):
+def forces_and_potential_wall(x, y, soft_walls, delta, k_wall):
     """
     This function, given a configuration of the system x, y computes the forces
     due to the interaction of particles with the wall (elastic forces), as well
-    as the corresponding potetial energy.
+    as the corresponding potetial energy. If soft_walls = False returns 0, 0, 0.
     """
     fx = np.zeros(N)
     fy = np.zeros(N)
     U = 0.0
     
+    if not soft_walls:   
+        return fx, fy, U
     #Wall x = L effect
     active = x > (L-delta)
     dx = x[active]- L + delta
@@ -165,21 +195,23 @@ def forces_and_potential_wall(x, y):
     dy = delta - y[active]
     fy[active] += k_wall*dy
     U += 0.5*k_wall*np.sum(dy*dy)
-    
     return fx, fy, U
 
-def total_energy (x, y, vx, vy):
+def energy(x, y, vx, vy):
     """
     This function, given a state of the system x, y, vx, vy (positions and 
-    velocities in x and y directions) returns the total energy of the system. 
-    The kinetik energy K = 1/2 v^2 and potential energy U = 1/r^6 - 1/r^4.
+    velocities in x and y directions) returns an array of the form 
+    [K, U_inter, U_wall, E_tot] where K is the kinetik energy of the system
+    U_inter is the potential due to the particle interactions and U_wall
+    the potential due to the interaction with the wall. Finally it returns the
+    total energy of the system.
     """
     #K = 1/2 v^2
     K = 0.5 * np.sum(vx**2 + vy**2)
-    _, _, U = forces_and_potential_interactions(x, y)
-    _, _, U_wall = forces_and_potential_wall(x, y)
+    _, _, U_inter = forces_and_potential_interactions(x, y)
+    _, _, U_wall = forces_and_potential_wall(x, y, soft_walls, delta, k_wall)
             
-    return [K, U, U_wall, K+U+U_wall]
+    return [K, U_inter, U_wall, K+U_inter+U_wall]
 
 def d2min(x, y):
     """
@@ -195,27 +227,30 @@ def d2min(x, y):
     return np.min(r2)
 
 
-# def wall_reflection_vel(pos, vel):
-#     """
-#     This function taxes as imput the position and velocity vectors. It flips
-#     the direction of the velocity for every particle whose position is outside
-#     the box of side L.
-#     """
-#     out = pos > L
-#     vel[out] *= -1
+def wall_reflection(pos, vel):
+    """
+    This function taxes as input the position and velocity vectors. It flips
+    the direction of the velocity for every particle whose position is outside
+    [0, L]
+    """
+    out = pos > L
+    vel[out] *= -1
     
-#     out = pos < 0 
-#     vel[out] *= -1
+    out = pos < 0 
+    vel[out] *= -1
+    
+    return pos, vel
     
 
-def step (x, y, vx, vy):
+def step (x, y, vx, vy, soft_walls):
     """
     At every iteration, this function updates the positions and velocities
     using a velocity-vertlet symplectic integrator. 
+    It returns a tuple of positions x, y and velocities vx, vy
     """
     
     fx, fy, _ = forces_and_potential_interactions(x, y)
-    fx_wall, fy_wall, _ = forces_and_potential_wall(x, y)
+    fx_wall, fy_wall, _ = forces_and_potential_wall(x, y, soft_walls, delta, k_wall)
     fx += fx_wall
     fy += fy_wall
     
@@ -226,18 +261,25 @@ def step (x, y, vx, vy):
     y += h*vy
     
     fx, fy, _ = forces_and_potential_interactions(x, y)
-    fx_wall, fy_wall, _ = forces_and_potential_wall(x, y)
+    fx_wall, fy_wall, _ = forces_and_potential_wall(x, y, soft_walls, delta, k_wall)
     fx += fx_wall
     fy += fy_wall
     
     vx += 0.5*h*fx
     vy += 0.5*h*fy
     
-def save_metadata(path, **meta):
-    meta = dict(meta)  # copy
-    meta["created_at_unix"] = time.time()
-    meta["created_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
-    Path(path).write_text(json.dumps(meta, indent=2))
+    if not soft_walls:
+        x, vx = wall_reflection(x, vx)
+        y, vy = wall_reflection(y, vy)
+    
+    
+    return x, y, vx, vy
+    
+# def save_metadata(path, **meta):
+#     meta = dict(meta)  # copy
+#     meta["created_at_unix"] = time.time()
+#     meta["created_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+#     Path(path).write_text(json.dumps(meta, indent=2))
     
 ###############################################################################
 ############################### MAIN EXECUTION ################################
@@ -248,9 +290,9 @@ def save_metadata(path, **meta):
 start_time = time.time()
 states = []
 energies = []
-rng = np.random.default_rng(seed=25) #set to None 
 
-x, y = initialize_pos(d_min, rng)
+
+x, y = initialize_pos(d_min, soft_walls, delta, rng)
 vx, vy = initialize_vel(K_target, rng)
 
 
@@ -260,63 +302,71 @@ t = 0
 while (t_sim <= T_MAX):
     if t%speed == 0:
         states.append([x.copy(), y.copy()])
-        energies.append([t_sim] + total_energy(x, y, vx, vy))
+        energies.append([t_sim] + energy(x, y, vx, vy))
         print(f"Progress = {(t_sim/T_MAX)*100:.2f}%", end="\r", flush = True)
-    step(x, y, vx, vy)
+    x, y, vx, vy = step(x, y, vx, vy, soft_walls)
     t_sim += h
     t += 1
 total_time = time.time()-start_time
 states = np.array(states)
 energies = np.array(energies) 
 
+formatted_time = time.strftime("%H:%M:%S", time.gmtime(total_time))
+print(f"\nSimulation completed in {formatted_time}")
+
 
 ###############################################################################
 ########################## DATA AND METADATA SAVE #############################
 ###############################################################################
-E = energies[:, 4] 
-dE = E -E[0]                   
-dE_rel = dE/abs(E[0])
 
-meta = {
-        "physical": {
-            "N": N,
-            "L": L,
-            "d_min": d_min,
-            "K_target": K_target,
-            "delta": delta,
-            "k_wall": k_wall,
-            },
-        "simulation": {
-            "h": h,
-            "eps": eps,
-            "speed": speed,
-            "T_MAX": T_MAX,
-            },
-        "timing": {
-            "Sim_duration" : total_time
-            },
-        "energy_analysis": {
-            "E_tot_0": energies[:, 4][0],
-            "U_int_0": energies[:, 2][0],
-            "U_wall_0": energies[:, 3][0],
-            "K_0": energies[:, 1] [0],
-            "rel_max_dev": np.max(np.abs(dE)) / abs(E[0]),
-            "rel_range":(E.max() - E.min()) / abs(E[0]),
-            },
-        "model": {
-            "pair_potential": "1/r^6 - 1/r^4",
-            "soft_walls": True,
-            },
-        "outputs": {
-            "states_file": "particles.npy",
-            "energies_file": "energies.npy",
-            },
-        "rng": {
-            "seed": 25,   # set to None if not used
-            },
-}
 
-save_metadata("run_metadata.json", **meta)
+
+
+
+# E = energies[:, 4] 
+# dE = E -E[0]                   
+# dE_rel = dE/abs(E[0])
+
+# meta = {
+#         "physical": {
+#             "N": N,
+#             "L": L,
+#             "d_min": d_min,
+#             "K_target": K_target,
+#             "delta": delta,
+#             "k_wall": k_wall,
+#             },
+#         "simulation": {
+#             "h": h,
+#             "eps": eps,
+#             "speed": speed,
+#             "T_MAX": T_MAX,
+#             },
+#         "timing": {
+#             "Sim_duration" : total_time
+#             },
+#         "energy_analysis": {
+#             "E_tot_0": energies[:, 4][0],
+#             "U_int_0": energies[:, 2][0],
+#             "U_wall_0": energies[:, 3][0],
+#             "K_0": energies[:, 1][0],
+#             "rel_max_dev": np.max(np.abs(dE)) / abs(E[0]),
+#             "rel_range":(E.max() - E.min()) / abs(E[0]),
+#             },
+#         "model": {
+#             "pair_potential": "1/r^6 - 1/r^4",
+#             "soft_walls": True,
+#             },
+#         "outputs": {
+#             "states_file": "particles.npy",
+#             "energies_file": "energies.npy",
+#             },
+#         "rng": {
+#             "seed": 25,   # set to None if not used
+#             },
+# }
+
+# save_metadata("run_metadata.json", **meta)
 
 np.save("particles.npy", states) 
 np.save("energies.npy", energies)
