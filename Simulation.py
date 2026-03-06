@@ -64,7 +64,7 @@ def initialize_pos(d_min, soft_walls, delta, rng, max_tries = 2000):
     This function generates N points uniformly in [0, L]x[0, L] so that their 
     mutual distance is greater than d_min. If soft_walls = True then the points 
     are generated in a square of side [delta, L-delta]. At every iteration it 
-    generates a new point and ensures that it is distnat more than d_min from 
+    generates a new point and ensures that it is distant more than d_min from 
     previously placed particles, if not the point is rejected and new attempt 
     is made. If rejects exceed max_tries function raises Error. 
     """
@@ -81,7 +81,7 @@ def initialize_pos(d_min, soft_walls, delta, rng, max_tries = 2000):
 
     while placed < N:
         if tries > max_tries:
-            raise RuntimeError("Failed to place all particles. Decrease r_min or increase L.")
+            raise RuntimeError("Failed to place all particles. Decrease d_min or increase L.")
         tries += 1
         
         #Generate uniformly on [delta, L-delta] x,y coordinates of candidate particle
@@ -294,7 +294,7 @@ t = 0
 
 while (t_sim <= T_MAX):
     if t%speed == 0:
-        states.append([x.copy(), y.copy()])
+        states.append(np.column_stack((x, y)))
         energies.append([t_sim] + energy(x, y, vx, vy))
         print(f"Progress = {(t_sim/T_MAX)*100:.2f}%", end="\r", flush = True)
     x, y, vx, vy = step(x, y, vx, vy, soft_walls)
