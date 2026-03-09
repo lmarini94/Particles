@@ -57,16 +57,24 @@ rng = np.random.default_rng(seed)
 ############################### MAIN FUNCTIONS ################################
 ###############################################################################
 
-def initialize_pos(d_min, delta, rng, max_tries = 2000):  
+def initialize_pos(N, L, d_min, delta, rng, max_tries = 2000):  
     """
+    Input:
+        N = number of particles
+        d_min = minimum distance between particles
+        delta = size of wall buffer zone
+        rng = random number generator
+        max_tries = maximum number of attempts
+    Output:
+        pos = (N, 2) dimensional array of positions
     This function generates N points randomly in [delta, L-delta] so that their 
-    mutual distance is greater than d_min. Points are generated using rng.    
+    mutual distance is greater than d_min. Points are generated using inputed rng.    
     At every iteration a new point is generated ensuring that its dstance from
     all previously generated points is d_min. If not, point is rejected and new 
     attempt is made at most max_tries times. 
-    Function return two N dimensional arrays x, y
     """
-
+    
+    # Initialize empty array
     pos = np.empty((N, 2), dtype=float)
     
     placed = 0
@@ -78,7 +86,7 @@ def initialize_pos(d_min, delta, rng, max_tries = 2000):
         if tries > max_tries:
             raise RuntimeError("Failed to place all particles. Decrease d_min or increase L.")
         
-        #Generate uniformly on [delta, L-delta] x,y coordinates of candidate particle
+        #Candidate [x, y] where x and y are generated uniformly on [delta, L-delta] 
         candidate = rng.random(2) * (L-2*delta) + delta
         
         #First particle is placed
@@ -88,60 +96,64 @@ def initialize_pos(d_min, delta, rng, max_tries = 2000):
             continue
         tries += 1
         
-        #Compute the array of distances between placed particles and candidate
+        #Distance of candidate from previously placed particles, size (placed,2)
         d = pos[:placed] - candidate
         d2 = np.sum(d*d, axis=1)
-        #d2 contains the distance squared of candidate from all placed particles
+        #d2 has size (placed), d2[i] = squared distance of particle i and candidate
         
         if np.all(d2 >= d2_min):
-            #if distance of candidate from all previously placed particles is enough
-            #candedate is placed 
             pos[placed] = candidate
             placed += 1
             tries = 0
     
-    return pos[:, 0], pos[:, 1]
+    return pos
 
-def initialize_vel(K_target, rng):
+def initialize_vel(N, K_target, rng):
     """
-    This function initializes the x and y velocity vectors of N particles.
-    Velocities are generated according to a normal distribution, net momentum 
-    is removed and they are rescaled so that the system has a target kinetik 
-    energy.
-    The function returns vx, vy two N dimensional arrays.
+    Input: 
+        N = number of particles
+        K_target = target kinetik energy of the system of particles
+        rng = input random number generator
+    Output:
+        v = (N,2) array of velocities
+    This function generates the velocity vectors of N particles. Velocities are 
+    generated according to a normal distribution (given rng), net momentum is 
+    removed and they are rescaled so that the system has a target kinetik energy.
     """
     
-    #Velocities are ranomly generated according to normal distribution
-    vx = rng.normal(0.0, 1.0, N)
-    vy = rng.normal(0.0, 1.0, N)
+    #V generated accoding to (0, 1) normal. v is shape (N, 2)
+    v = rng.normal(0.0, 1.0, (N, 2))
 
     # remove net momentum
-    vx -= vx.mean()
-    vy -= vy.mean()
+    v -= v.mean(axis = 0)
 
     #Compute total kinetik energy
-    K = 0.5*np.sum(vx*vx + vy*vy)
+    K = 0.5*np.sum(v**2)
 
     scale = np.sqrt(K_target / K)
-    vx *= scale
-    vy *= scale
+    v *= scale
 
-    return vx, vy
+    return v
     
-def forces_and_potential_interactions(x, y): 
+def forces_and_potential_interactions(x): 
     """
-    Given a configuration of the system x, y, this function computes the 
-    two arrays of forces fx and fy and the potential energy U due to 
-    interactions. Forces are computed using U = 1/r^6 -1/r^4. A smoothing 
-    correction of eps is added to the computation of the distance between 
-    particles.
+    Input:
+        x = (N,2) array of positions.
+    Outputs: 
+        f = (N, 2) array of forces
+        U = potential energy 
+    This function computes the array of forces f and the potential U due to 
+    interparticles interactions of the system. Forces are computed using 
+    U = 1/r^6 -1/r^4. A smoothing correction of eps is added to the computation 
+    of the distance between particles.
     """
     
-    #Compute the matrices of differences dx_ij = x[i] - x[j]
-    dx = x[:, None] - x[None,:]
-    dy = y[:, None] - y[None,:]
+    #Compute the matrices of differences if x is shape (N, 2) then dx is (N, N, 2)
+    dx = x[:, None, :] - x[None, :, :]
     
-    r2 = dx*dx + dy*dy + eps
+    #r2[i, j] = squared distance between particle i and j shape (N, N)
+    r2 = np.sum(dx*dx, axis = 2) + eps
+    
     
     #Sets the diagonal of r2 to infinity.
     np.fill_diagonal(r2, np.inf)
@@ -154,106 +166,113 @@ def forces_and_potential_interactions(x, y):
     #This is 0 on the diagonal.
     
     #fx = (6/r^8 -4/r^6)*dx
-    #fy = 6/r^8 -4/r^6)*dy
-    fx = np.sum(coef * dx, axis=1)
-    fy = np.sum(coef * dy, axis=1)
+    #fy = (6/r^8 -4/r^6)*dy
+    f = np.sum(coef[:, :, None] * dx, axis=1)
     U = 0.5*np.sum(1/r6 - 1/r4)
     
-    return fx, fy, U
+    return f, U
 
-def forces_and_potential_wall(x, y, delta, k_wall):
+def forces_and_potential_wall(x, L, delta, k_wall):
     """
-    This function, given a configuration of the system x, y computes the forces
-    due to the interaction of particles with the wall (elastic forces), as well
-    as the corresponding potetial energy. 
+    Input:
+        x = (N, 2) dimensional array of positions
+        delta = size of wall buffer
+        k_wall = wall elastic constant
+    Output:
+        f = (N, 2) array of forces
+        U = elastic potential energy
+    This function, computes the forces due to the wall interactions and the 
+    corresponding potetial energy.This is modelled as an elastic force which 
+    acts on a buffer zone of lenght delta from the walls.
     """
-    fx = np.zeros(N)
-    fy = np.zeros(N)
+    f = np.zeros_like(x)
     U = 0.0
     
-    #Wall x = L effect
+    #Upper wall x = L, y= L
     active = x > (L-delta)
-    dx = x[active]- L + delta
-    fx[active] += -k_wall*dx
-    U += 0.5*k_wall*np.sum(dx*dx)
+    d = x[active] - (L - delta)
+    f [active] += -k_wall*d
+    U += 0.5 * k_wall * np.sum(d*d)
     
-    #Wall x = 0 effect
+    #Lower wall x = 0, y= 0
     active = x < delta
-    dx = delta - x[active]
-    fx[active] += k_wall*dx
-    U += 0.5*k_wall*np.sum(dx*dx)
+    d = delta - x[active]
+    f [active] += k_wall*d
+    U += 0.5 * k_wall * np.sum(d*d)
     
-    #Wall y = L effect
-    active = y > (L-delta)
-    dy = y[active] - L + delta
-    fy[active] += -k_wall*dy
-    U += 0.5*k_wall*np.sum(dy*dy)
-    
-    #Wall y = 0 effect
-    active = y < delta
-    dy = delta - y[active]
-    fy[active] += k_wall*dy
-    U += 0.5*k_wall*np.sum(dy*dy)
-    return fx, fy, U
+    return f, U
 
-def energy(x, y, vx, vy, delta, k_wall):
+def energy(x, v, L, delta, k_wall):
     """
-    This function, given a state of the system x, y, vx, vy (positions and 
-    velocities in x and y directions) returns an array of the form 
-    [K, U_inter, U_wall, E_tot] where K is the kinetik energy of the system
-    U_inter is the potential due to the particle interactions and U_wall
-    the potential due to the interaction with the wall. Finally it returns the
-    total energy of the system.
+    Input:
+        x = (N, 2) dimensional position vector
+        v = (N, 2) dimentsional velocity vector
+        L = size of box
+        delta = size of wall buffer
+        k_wall = wall elastic constant
+    Output :
+        K = kinetik energy 
+        U_inter = potential energy due to interparticle forces
+        U_wall = potential due to wall interactions
+        E_tot = total energy 
+    This function, given a state of the system x, v (positions and 
+    velocities) returns the various energies of the system.
     """
     #K = 1/2 v^2
-    K = 0.5 * np.sum(vx**2 + vy**2)
-    _, _, U_inter = forces_and_potential_interactions(x, y)
-    _, _, U_wall = forces_and_potential_wall(x, y, delta, k_wall)
-            
-    return [K, U_inter, U_wall, K+U_inter+U_wall]
-
-def d2min(x, y, N):
-    """
-    This function given a configuration of the system x, y returns the 
-    minimum squared distance between two particles.
-    """
+    K = 0.5 * np.sum(v**2)
+    _, U_inter = forces_and_potential_interactions(x)
+    _, U_wall = forces_and_potential_wall(x, L, delta, k_wall)
     
+    E_tot = K + U_inter + U_wall
+    return K, U_inter, U_wall, E_tot
+
+def dmin(x):
+    """
+    Input:
+        x = (N, 2) dimensional array of positions
+    Output:
+        r_min = the minimum distance between particles 
+    """
+    N = len(x)
     iu, ju = np.triu_indices(N, k=1)
     
-    dx = x[iu] - x[ju]
-    dy = y[iu] - y[ju]
+    d = x[iu] - x[ju]
     
-    r2 = dx*dx + dy*dy 
-    return np.min(r2)
+    r2 = np.sum(d*d, axis=1)
+    r_min = np.sqrt(np.min(r2))
+    return r_min
     
 
-def step (x, y, vx, vy):
+def step (x, v, L, delta, k_wall, h):
     """
+    Input:
+        x = (N, 2) dimensional position vector
+        v = (N, 2) dimentsional velocity vector
+        L = size of box
+        delta = size of wall buffer
+        k_wall = wall elastic constant
+    Output:
+        x = (N, 2) dimensional position vector
+        v = (N, 2) dimentsional velocity vector
     At every iteration, this function updates the positions and velocities
     using a velocity-Vertlet symplectic integrator. 
-    It returns a tuple of positions x, y and velocities vx, vy
     """
     
-    fx, fy, _ = forces_and_potential_interactions(x, y)
-    fx_wall, fy_wall, _ = forces_and_potential_wall(x, y, delta, k_wall)
-    fx += fx_wall
-    fy += fy_wall
+    f, _ = forces_and_potential_interactions(x)
+    f_wall, _ = forces_and_potential_wall(x, L, delta, k_wall)
+    f += f_wall
     
-    vx += 0.5*h*fx
-    vy += 0.5*h*fy
+    v += 0.5*h*f
     
-    x += h*vx
-    y += h*vy
+    x += h*v
     
-    fx, fy, _ = forces_and_potential_interactions(x, y)
-    fx_wall, fy_wall, _ = forces_and_potential_wall(x, y, delta, k_wall)
-    fx += fx_wall
-    fy += fy_wall
+    f, _ = forces_and_potential_interactions(x)
+    f_wall, _ = forces_and_potential_wall(x, L, delta, k_wall)
+    f += f_wall
     
-    vx += 0.5*h*fx
-    vy += 0.5*h*fy    
+    v += 0.5*h*f
     
-    return x, y, vx, vy
+    return x, v
 
 ###############################################################################
 ############################### MAIN EXECUTION ################################
@@ -265,19 +284,19 @@ start_time = time.time()
 states = []
 energies = []
 
-x, y = initialize_pos(d_min, delta, rng)
-vx, vy = initialize_vel(K_target, rng)
-
+x = initialize_pos(N, L, d_min, delta, rng)
+v = initialize_vel(N, K_target, rng)
 
 t_sim = 0 
 t = 0
 
 while (t_sim <= T_MAX):
     if t%speed == 0:
-        states.append(np.column_stack((x, y)))
-        energies.append([t_sim] + energy(x, y, vx, vy, delta, k_wall))
+        states.append(x.copy())
+        K, U_inter, U_wall, E_tot = energy(x, v, L, delta, k_wall)
+        energies.append([t_sim, K, U_inter, U_wall, E_tot])
         print(f"Progress = {(t_sim/T_MAX)*100:.2f}%", end="\r", flush = True)
-    x, y, vx, vy = step(x, y, vx, vy)
+    x, v = step(x, v, L, delta, k_wall, h)
     t_sim = t*h
     t += 1
 print(f"Progress = {(t_sim/T_MAX)*100:.2f}%", end="\r", flush = True)
