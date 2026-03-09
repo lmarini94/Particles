@@ -1,6 +1,6 @@
 {
  "physical":{
-     "N": 32,
+     "N": 64,
      "L": 100,
      "d_min": 1.5,
      "K_target": 1.5,
@@ -11,12 +11,11 @@
      "h": 0.0005,
      "eps": 0.01,
      "speed": 1000,
-     "T_MAX": 100, 
+     "T_MAX": 500, 
      "seed": null      
      },
  "model":{
-     "pair_potential": "1/r^6 - 1/r^4",
-     "soft_walls": true
+     "pair_potential": "1/r^6 - 1/r^4"
      },
  "outputs":{
      "states_file": "states.npy",

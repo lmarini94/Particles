@@ -21,7 +21,7 @@ with open(CONFIG_PATH) as f:
     
 #EXTRACT PARAMETERS
 
-#PHYSICAL PARAMENTERS
+#PHYSICAL PARAMETERS
 #N -> Number of particles
 #L -> Size of the box
 #d_min -> Min initial dist between particles
@@ -48,8 +48,6 @@ speed = config["simulation"]["speed"]
 T_MAX = config["simulation"]["T_MAX"]
 seed = config["simulation"]["seed"]
 
-#MODEL PARAMETERS
-soft_walls = config["model"]["soft_walls"]
 
 rng = np.random.default_rng(seed)
 #If "seed":null then seed = None
@@ -59,19 +57,16 @@ rng = np.random.default_rng(seed)
 ############################### MAIN FUNCTIONS ################################
 ###############################################################################
 
-def initialize_pos(d_min, soft_walls, delta, rng, max_tries = 2000):  
+def initialize_pos(d_min, delta, rng, max_tries = 2000):  
     """
-    This function generates N points uniformly in [0, L]x[0, L] so that their 
-    mutual distance is greater than d_min. If soft_walls = True then the points 
-    are generated in a square of side [delta, L-delta]. At every iteration it 
-    generates a new point and ensures that it is distant more than d_min from 
-    previously placed particles, if not the point is rejected and new attempt 
-    is made. If rejects exceed max_tries function raises Error. 
+    This function generates N points randomly in [delta, L-delta] so that their 
+    mutual distance is greater than d_min. Points are generated using rng.    
+    At every iteration a new point is generated ensuring that its dstance from
+    all previously generated points is d_min. If not, point is rejected and new 
+    attempt is made at most max_tries times. 
+    Function return two N dimensional arrays x, y
     """
-    
-    #If soft_walls = False then sets the buffer zone delta to zero
-    if not soft_walls:
-        delta = 0
+
     pos = np.empty((N, 2), dtype=float)
     
     placed = 0
@@ -82,7 +77,6 @@ def initialize_pos(d_min, soft_walls, delta, rng, max_tries = 2000):
     while placed < N:
         if tries > max_tries:
             raise RuntimeError("Failed to place all particles. Decrease d_min or increase L.")
-        tries += 1
         
         #Generate uniformly on [delta, L-delta] x,y coordinates of candidate particle
         candidate = rng.random(2) * (L-2*delta) + delta
@@ -92,6 +86,7 @@ def initialize_pos(d_min, soft_walls, delta, rng, max_tries = 2000):
             pos[0] = candidate
             placed = 1
             continue
+        tries += 1
         
         #Compute the array of distances between placed particles and candidate
         d = pos[:placed] - candidate
@@ -103,13 +98,17 @@ def initialize_pos(d_min, soft_walls, delta, rng, max_tries = 2000):
             #candedate is placed 
             pos[placed] = candidate
             placed += 1
+            tries = 0
     
     return pos[:, 0], pos[:, 1]
 
 def initialize_vel(K_target, rng):
     """
-    This function initializes veloities of the particles so that the system 
-    has a given target kinetik energy K_target
+    This function initializes the x and y velocity vectors of N particles.
+    Velocities are generated according to a normal distribution, net momentum 
+    is removed and they are rescaled so that the system has a target kinetik 
+    energy.
+    The function returns vx, vy two N dimensional arrays.
     """
     
     #Velocities are ranomly generated according to normal distribution
@@ -132,9 +131,10 @@ def initialize_vel(K_target, rng):
 def forces_and_potential_interactions(x, y): 
     """
     Given a configuration of the system x, y, this function computes the 
-    two arrays of forces fx and fy and the tital potential energy U. The 
-    forces are computed using U = 1/r^6 -1/r^4. A smoothing correction 
-    of eps is added to the computation of the distance between particles.
+    two arrays of forces fx and fy and the potential energy U due to 
+    interactions. Forces are computed using U = 1/r^6 -1/r^4. A smoothing 
+    correction of eps is added to the computation of the distance between 
+    particles.
     """
     
     #Compute the matrices of differences dx_ij = x[i] - x[j]
@@ -143,7 +143,7 @@ def forces_and_potential_interactions(x, y):
     
     r2 = dx*dx + dy*dy + eps
     
-    #Since r2 is zero on the diagonal then replace the zeros with infty
+    #Sets the diagonal of r2 to infinity.
     np.fill_diagonal(r2, np.inf)
     
     r4 = r2*r2
@@ -151,6 +151,7 @@ def forces_and_potential_interactions(x, y):
     r8 = r4*r4
     
     coef = 6.0/r8 -4.0/r6
+    #This is 0 on the diagonal.
     
     #fx = (6/r^8 -4/r^6)*dx
     #fy = 6/r^8 -4/r^6)*dy
@@ -160,18 +161,16 @@ def forces_and_potential_interactions(x, y):
     
     return fx, fy, U
 
-def forces_and_potential_wall(x, y, soft_walls, delta, k_wall):
+def forces_and_potential_wall(x, y, delta, k_wall):
     """
     This function, given a configuration of the system x, y computes the forces
     due to the interaction of particles with the wall (elastic forces), as well
-    as the corresponding potetial energy. If soft_walls = False returns 0, 0, 0.
+    as the corresponding potetial energy. 
     """
     fx = np.zeros(N)
     fy = np.zeros(N)
     U = 0.0
     
-    if not soft_walls:   
-        return fx, fy, U
     #Wall x = L effect
     active = x > (L-delta)
     dx = x[active]- L + delta
@@ -197,7 +196,7 @@ def forces_and_potential_wall(x, y, soft_walls, delta, k_wall):
     U += 0.5*k_wall*np.sum(dy*dy)
     return fx, fy, U
 
-def energy(x, y, vx, vy):
+def energy(x, y, vx, vy, delta, k_wall):
     """
     This function, given a state of the system x, y, vx, vy (positions and 
     velocities in x and y directions) returns an array of the form 
@@ -209,48 +208,34 @@ def energy(x, y, vx, vy):
     #K = 1/2 v^2
     K = 0.5 * np.sum(vx**2 + vy**2)
     _, _, U_inter = forces_and_potential_interactions(x, y)
-    _, _, U_wall = forces_and_potential_wall(x, y, soft_walls, delta, k_wall)
+    _, _, U_wall = forces_and_potential_wall(x, y, delta, k_wall)
             
     return [K, U_inter, U_wall, K+U_inter+U_wall]
 
-def d2min(x, y):
+def d2min(x, y, N):
     """
     This function given a configuration of the system x, y returns the 
     minimum squared distance between two particles.
     """
     
-    dx = x[:, None] - x[None,:]
-    dy = y[:, None] - y[None,:]
+    iu, ju = np.triu_indices(N, k=1)
+    
+    dx = x[iu] - x[ju]
+    dy = y[iu] - y[ju]
     
     r2 = dx*dx + dy*dy 
-    np.fill_diagonal(r2, np.inf)
     return np.min(r2)
-
-
-def wall_reflection(pos, vel):
-    """
-    This function taxes as input the position and velocity vectors. It flips
-    the direction of the velocity for every particle whose position is outside
-    [0, L]
-    """
-    out = pos > L
-    vel[out] *= -1
-    
-    out = pos < 0 
-    vel[out] *= -1
-    
-    return pos, vel
     
 
-def step (x, y, vx, vy, soft_walls):
+def step (x, y, vx, vy):
     """
     At every iteration, this function updates the positions and velocities
-    using a velocity-vertlet symplectic integrator. 
+    using a velocity-Vertlet symplectic integrator. 
     It returns a tuple of positions x, y and velocities vx, vy
     """
     
     fx, fy, _ = forces_and_potential_interactions(x, y)
-    fx_wall, fy_wall, _ = forces_and_potential_wall(x, y, soft_walls, delta, k_wall)
+    fx_wall, fy_wall, _ = forces_and_potential_wall(x, y, delta, k_wall)
     fx += fx_wall
     fy += fy_wall
     
@@ -261,17 +246,12 @@ def step (x, y, vx, vy, soft_walls):
     y += h*vy
     
     fx, fy, _ = forces_and_potential_interactions(x, y)
-    fx_wall, fy_wall, _ = forces_and_potential_wall(x, y, soft_walls, delta, k_wall)
+    fx_wall, fy_wall, _ = forces_and_potential_wall(x, y, delta, k_wall)
     fx += fx_wall
     fy += fy_wall
     
     vx += 0.5*h*fx
-    vy += 0.5*h*fy
-    
-    if not soft_walls:
-        x, vx = wall_reflection(x, vx)
-        y, vy = wall_reflection(y, vy)
-    
+    vy += 0.5*h*fy    
     
     return x, y, vx, vy
 
@@ -285,7 +265,7 @@ start_time = time.time()
 states = []
 energies = []
 
-x, y = initialize_pos(d_min, soft_walls, delta, rng)
+x, y = initialize_pos(d_min, delta, rng)
 vx, vy = initialize_vel(K_target, rng)
 
 
@@ -295,10 +275,10 @@ t = 0
 while (t_sim <= T_MAX):
     if t%speed == 0:
         states.append(np.column_stack((x, y)))
-        energies.append([t_sim] + energy(x, y, vx, vy))
+        energies.append([t_sim] + energy(x, y, vx, vy, delta, k_wall))
         print(f"Progress = {(t_sim/T_MAX)*100:.2f}%", end="\r", flush = True)
-    x, y, vx, vy = step(x, y, vx, vy, soft_walls)
-    t_sim += h
+    x, y, vx, vy = step(x, y, vx, vy)
+    t_sim = t*h
     t += 1
 print(f"Progress = {(t_sim/T_MAX)*100:.2f}%", end="\r", flush = True)
 total_time = time.time()-start_time
@@ -321,7 +301,7 @@ timestamp = time.strftime("%Y%m%d_%H%M")
 run_dir = Path("run") / timestamp
 run_dir.mkdir(parents=True, exist_ok=True)
 
-# ADD TIMING PARAMENTERS TO CONFIG AND SAVE TO FOLDER
+# ADD TIMING PARAMETERS TO CONFIG AND SAVE TO FOLDER
 config["Created_at_unix"] = time.time()
 config["Created_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
 config["Simulation_duration"] = total_time
