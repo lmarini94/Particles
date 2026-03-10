@@ -3,4 +3,4 @@ __pycache__/
 *.gif
 *.mp4
 *.pyc
-run/
+runs/
