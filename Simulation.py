@@ -135,10 +135,11 @@ def initialize_vel(N, K_target, rng):
 
     return v
     
-def forces_and_potential_interactions(x): 
+def forces_and_potential_interactions(x, iu, ju, eps): 
     """
     Input:
         x = (N,2) array of positions.
+        iu, ju = upper triangular indices of NxN matrix
     Outputs: 
         f = (N, 2) array of forces
         U = potential energy 
@@ -147,29 +148,26 @@ def forces_and_potential_interactions(x):
     U = 1/r^6 -1/r^4. A smoothing correction of eps is added to the computation 
     of the distance between particles.
     """
+    N,_ = np.shape(x)
     
-    #Compute the matrices of differences if x is shape (N, 2) then dx is (N, N, 2)
-    dx = x[:, None, :] - x[None, :, :]
+    #Shape (P, 2) where P = N(N-1)/2
+    #dx[i] = [d_x, d_y] where d_x = x[iu[i]] - x[ju[i]]
+    dx = x[iu] - x[ju]
     
-    #r2[i, j] = squared distance between particle i and j shape (N, N)
-    r2 = np.sum(dx*dx, axis = 2) + eps
-    
-    
-    #Sets the diagonal of r2 to infinity.
-    np.fill_diagonal(r2, np.inf)
+    #len(r2) = P r2[i] is square distance between particle iu[i] and ju[i]
+    r2 = np.sum(dx*dx, axis=1) + eps
     
     r4 = r2*r2
     r6 = r2*r2*r2
     r8 = r4*r4
     
-    coef = 6.0/r8 -4.0/r6
-    #This is 0 on the diagonal.
+    coef = 6.0/r8 - 4.0/r6
     
-    #fx = (6/r^8 -4/r^6)*dx
-    #fy = (6/r^8 -4/r^6)*dy
-    f = np.sum(coef[:, :, None] * dx, axis=1)
-    U = 0.5*np.sum(1/r6 - 1/r4)
+    f = np.zeros((N, 2))
+    np.add.at(f, iu,  coef[:, None] * dx)
+    np.add.at(f, ju, -coef[:, None] * dx)
     
+    U = np.sum(1/r6 -1/r4)    
     return f, U
 
 def forces_and_potential_wall(x, L, delta, k_wall):
@@ -202,11 +200,12 @@ def forces_and_potential_wall(x, L, delta, k_wall):
     
     return f, U
 
-def energy(x, v, L, delta, k_wall):
+def energy(x, v, iu, ju, L, delta, k_wall, eps):
     """
     Input:
         x = (N, 2) dimensional position vector
         v = (N, 2) dimentsional velocity vector
+        iu, ju = upper triangular indices of NxN matrix
         L = size of box
         delta = size of wall buffer
         k_wall = wall elastic constant
@@ -220,7 +219,7 @@ def energy(x, v, L, delta, k_wall):
     """
     #K = 1/2 v^2
     K = 0.5 * np.sum(v**2)
-    _, U_inter = forces_and_potential_interactions(x)
+    _, U_inter = forces_and_potential_interactions(x, iu, ju, eps)
     _, U_wall = forces_and_potential_wall(x, L, delta, k_wall)
     
     E_tot = K + U_inter + U_wall
@@ -243,11 +242,12 @@ def dmin(x):
     return r_min
     
 
-def step (x, v, L, delta, k_wall, h):
+def step (x, v, iu, ju, L, delta, k_wall, eps, h):
     """
     Input:
         x = (N, 2) dimensional position vector
         v = (N, 2) dimentsional velocity vector
+        iu, ju = upper triangular indices of NxN matrix
         L = size of box
         delta = size of wall buffer
         k_wall = wall elastic constant
@@ -258,7 +258,7 @@ def step (x, v, L, delta, k_wall, h):
     using a velocity-Vertlet symplectic integrator. 
     """
     
-    f, _ = forces_and_potential_interactions(x)
+    f, _ = forces_and_potential_interactions(x, iu, ju, eps)
     f_wall, _ = forces_and_potential_wall(x, L, delta, k_wall)
     f += f_wall
     
@@ -266,7 +266,7 @@ def step (x, v, L, delta, k_wall, h):
     
     x += h*v
     
-    f, _ = forces_and_potential_interactions(x)
+    f, _ = forces_and_potential_interactions(x, iu, ju, eps)
     f_wall, _ = forces_and_potential_wall(x, L, delta, k_wall)
     f += f_wall
     
@@ -287,16 +287,18 @@ energies = []
 x = initialize_pos(N, L, d_min, delta, rng)
 v = initialize_vel(N, K_target, rng)
 
+iu, ju = np.triu_indices(N, k=1)
+
 t_sim = 0 
 t = 0
 
 while (t_sim <= T_MAX):
     if t%speed == 0:
         states.append(x.copy())
-        K, U_inter, U_wall, E_tot = energy(x, v, L, delta, k_wall)
+        K, U_inter, U_wall, E_tot = energy(x, v, iu, ju, L, delta, k_wall, eps)
         energies.append([t_sim, K, U_inter, U_wall, E_tot])
         print(f"Progress = {(t_sim/T_MAX)*100:.2f}%", end="\r", flush = True)
-    x, v = step(x, v, L, delta, k_wall, h)
+    x, v = step(x, v, iu, ju, L, delta, k_wall, eps, h)
     t_sim = t*h
     t += 1
 print(f"Progress = {(t_sim/T_MAX)*100:.2f}%", end="\r", flush = True)
@@ -317,7 +319,7 @@ energies_path = config["outputs"]["energies_file"]
 
 # CREATE TIMESTAMPED OUTPUT DIRECTORY
 timestamp = time.strftime("%Y%m%d_%H%M")
-run_dir = Path("run") / timestamp
+run_dir = Path("runs") / timestamp
 run_dir.mkdir(parents=True, exist_ok=True)
 
 # ADD TIMING PARAMETERS TO CONFIG AND SAVE TO FOLDER

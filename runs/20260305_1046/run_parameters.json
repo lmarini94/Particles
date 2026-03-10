@@ -1,0 +1,28 @@
+{
+  "physical": {
+    "N": 32,
+    "L": 100,
+    "d_min": 1.5,
+    "K_target": 1.5,
+    "delta": 1.0,
+    "k_wall": 5.0
+  },
+  "simulation": {
+    "h": 0.0005,
+    "eps": 0.01,
+    "speed": 1000,
+    "T_MAX": 100,
+    "seed": null
+  },
+  "model": {
+    "pair_potential": "1/r^6 - 1/r^4",
+    "soft_walls": true
+  },
+  "outputs": {
+    "states_file": "states.npy",
+    "energies_file": "energies.npy"
+  },
+  "Created_at_unix": 1772675170.4640274,
+  "Created_at": "2026-03-05 10:46:10",
+  "Simulation_duration": 25.957810878753662
+}

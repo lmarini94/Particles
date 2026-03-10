@@ -16,12 +16,12 @@ import json, time
 ###############################################################################
 
 
-def select_run(latest=True, runs_dir="run"):
+def select_run(latest=True, runs_dir="runs"):
     runs_dir = Path(runs_dir)
     
-    #Check if run directory exists
+    #Check if runs directory exists
     if not runs_dir.exists():
-        raise FileNotFoundError(f"Run directory '{runs_dir}' does not exist.")
+        raise FileNotFoundError(f"Runs directory '{runs_dir}' does not exist.")
 
     runs = sorted([d.name for d in runs_dir.iterdir() if d.is_dir()])
 

@@ -15,12 +15,12 @@ import json, time
 ###############################################################################
 
 
-def select_run(latest=True, runs_dir="run"):
+def select_run(latest=True, runs_dir="runs"):
     runs_dir = Path(runs_dir)
     
-    #Check if run directory exists
+    #Check if runs directory exists
     if not runs_dir.exists():
-        raise FileNotFoundError(f"Run directory '{runs_dir}' does not exist.")
+        raise FileNotFoundError(f"Runs directory '{runs_dir}' does not exist.")
 
     runs = sorted([d.name for d in runs_dir.iterdir() if d.is_dir()])
 
@@ -41,7 +41,7 @@ def select_run(latest=True, runs_dir="run"):
     print(f"Using run: {run_name}")
     return runs_dir / run_name
 
-myrun = select_run()
+myrun = select_run(False)
 
 ###############################################################################
 ############################### IMPORT DATA ###################################
@@ -120,12 +120,14 @@ print("rel range =", (E.max() - E.min()) / abs(E[0]))
 
 def radial_distribution(states, L, bins=100, r_max=None):
     """
-    This function computes the radial distribution function. 
-    
-    states = (T, N, 2) array with x, y per frame. 
-    L = side of the box.
-    bins = number of radial bins
-    r_max = max radius to consider, default = L/2
+    Input:
+        states = (T, N, 2) dimensional array with the positions of the system
+        L = size of the box
+        bins = number of radial bins
+        r_max = maximum radius considered, default L/2.
+    Output:
+        r = array of len(bins) of equally spaced radii between 0 and r_max
+        g = array of len(bins), values of the RDF
     """
     T, N, _ = states.shape
     
@@ -170,19 +172,18 @@ def radial_distribution(states, L, bins=100, r_max=None):
 
 def rdf_time_series(states, L, window = 20, step = 10, bins = 100, r_max = None):
     """
-    Compute time-resolved radial distribution function g_t(r).
-
-    states: array (T, N, 2) with x,y per frame
-    L: box size (assumes [0,L]x[0,L])
-    bins: number of radial bins
-    r_max: max radius to consider (default L/2)
-    window: number of consecutive frames to average (1 = per-frame RDF)
-    step: stride between output times
-
-    Returns:
-      times_idx: indices of the 'time points' (start of each window)
-      r: bin centers (array of size(r) = bin)
-      g_t: array (size(times_idx), bins) with g_t(r) over time
+    Input:
+        states = (T, N, 2) dimensional array with the positions of the system
+        L = size of the box
+        window = size of temporal window used for time resolved RDF
+        step = how often we compute the RDF of the window
+        bins = number of radial bins
+        r_max = maximum radius considered, default L/2.
+    Output:
+        times_idx = array of the start time of each window.
+        r = array of len(bins) of equally spaced radii between 0 and r_max
+        g_t = array of size (len(times_idx), bin), g_t[i] are the values of the 
+        RDF function computed between times_idx[i]:times_idx[i] + window
     """
     
     T = len(states)
