@@ -41,7 +41,7 @@ def select_run(latest=True, runs_dir="runs"):
     print(f"Using run: {run_name}")
     return runs_dir / run_name
 
-myrun = select_run(False)
+myrun = select_run()
 
 ###############################################################################
 ############################### IMPORT DATA ###################################

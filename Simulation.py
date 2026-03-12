@@ -25,13 +25,15 @@ with open(CONFIG_PATH) as f:
 #N -> Number of particles
 #L -> Size of the box
 #d_min -> Min initial dist between particles
+#r_c -> cutoff radius
 #K_target -> Initial kinetik energy
 #delta -> Size of buffer zone around walls
 #k_wall -> Elastic constant of wall
 
 N = config["physical"]["N"]                     
 L = config["physical"]["L"]                     
-d_min = config["physical"]["d_min"]             
+d_min = config["physical"]["d_min"] 
+r_c = config["physical"]["r_c"]            
 K_target = config["physical"]["K_target"]       
 delta = config["physical"]["delta"]             
 k_wall = config["physical"]["k_wall"]
@@ -134,43 +136,127 @@ def initialize_vel(N, K_target, rng):
     v *= scale
 
     return v
-    
-def forces_and_potential_interactions(x, iu, ju, eps): 
+
+def build_cell(x, n_cells, cell_size):
     """
     Input:
-        x = (N,2) array of positions.
-        iu, ju = upper triangular indices of NxN matrix
-    Outputs: 
-        f = (N, 2) array of forces
-        U = potential energy 
-    This function computes the array of forces f and the potential U due to 
-    interparticles interactions of the system. Forces are computed using 
-    U = 1/r^6 -1/r^4. A smoothing correction of eps is added to the computation 
-    of the distance between particles.
+        x = (N,2) np.array of positions.
+        n_cells = number of cells per side
+        cell_size = side of the square cells
+    Output:
+        cells = n_cells^2 len array of np.arrays where cells[c] is the array which 
+        contains the indices of particles in cell c
+    Given a configuration of the system x, this function builds the cell lists.
     """
-    N,_ = np.shape(x)
     
-    #Shape (P, 2) where P = N(N-1)/2
-    #dx[i] = [d_x, d_y] where d_x = x[iu[i]] - x[ju[i]]
-    dx = x[iu] - x[ju]
+    cells = [[] for _ in range(n_cells**2)]
     
-    #len(r2) = P r2[i] is square distance between particle iu[i] and ju[i]
-    r2 = np.sum(dx*dx, axis=1) + eps
+    for i, p in enumerate(x):
+        #Vectorial coordinates of cell
+        cx = int(p[0]/cell_size)
+        cy = int(p[1]/cell_size)
+        #Scalar coordinates of cell
+        c = cx + cy*n_cells
+        cells[c].append(i)
     
-    r4 = r2*r2
-    r6 = r2*r2*r2
-    r8 = r4*r4
-    
-    coef = 6.0/r8 - 4.0/r6
+    #Convert into np.arrays
+    cells = [np.array(c, dtype = int) for c in cells]
+    return cells
+
+def forces_potential_interactions(x, cells, r_c, eps):
+    """
+    Input: 
+        x = (N,2) np.array of positions.
+        cells = array of np.arrays where cells[c] is the array which 
+        contains the indices of particles in cell c
+        r_c = cutoff radious
+        eps = regularization parameter
+    Output: 
+        f = (N, 2) array of forces
+        U = potential energy due to interactions
+    This function computes the array of forces f and the potential energy U
+    of particle interactions using a cell list approach. Forces are computed 
+    using the potential U(r) = 1/r^6 -1/r^4 which is set to zero for r>r_c and
+    shifted to ensure continuity. U = U(r) -U(r_c). A smoothing correction 
+    of eps is added to the computation of the distance between particles.
+    """
+    N = len(x)
+    n_cells = int(np.sqrt(len(cells)))
+    rc2 = r_c*r_c
+    eps2 = eps*eps
+    #Compute potential shift
+    U_shift = 1/(r_c)**6 - 1/(r_c)**4
     
     f = np.zeros((N, 2))
-    np.add.at(f, iu,  coef[:, None] * dx)
-    np.add.at(f, ju, -coef[:, None] * dx)
+    U = 0.0
     
-    U = np.sum(1/r6 -1/r4)    
+    #Neighbouring cells that will be checked 
+    neighbors = [(0,0),(1,0),(-1,1),(0,1),(1,1)]
+    
+    #Cycle across all cells
+    for cy in range(n_cells):
+        for cx in range(n_cells):
+            #Cycle across all cells
+            c = cx + cy*n_cells
+            A = cells[c]
+            
+            #If cell is empty skip
+            if len(A)==0:
+                continue
+            
+            #Check all 5 neighbouring cells
+            for nx, ny in neighbors:
+                #If neighbour goes out of box skip
+                if (cx + nx) < 0 or (cx + nx) >= n_cells or (cy + ny) >= n_cells:
+                    continue
+                n = cx + nx + (cy + ny)*n_cells
+                B = cells[n]
+                
+                #If neighbouring cell is empty skip
+                if len(B) == 0:
+                    continue
+                
+                #Compute differences this is shape len(A), len(B), 2
+                #Here dx[a, b] = [dx, dy] where dx and dy are the distances between
+                #particle x[A[a]] and x[B[b]]
+                dx = x[A][:, None, :] - x[B][None, :, :]
+                
+                #r2 is shape len(A), len(B)
+                r2 = np.sum(dx*dx, axis = 2)
+                
+                mask = r2 < rc2
+                
+                #If all particles distant more than the cutoff, skip
+                if not np.any(mask):
+                    continue
+                
+                i_idx, j_idx = np.where(mask)
+                
+                #If same cell, only use upper triangle
+                if c == n:
+                    valid = i_idx < j_idx
+                    i_idx = i_idx[valid]
+                    j_idx = j_idx[valid]
+                
+                pair_r2 = r2[i_idx, j_idx]
+                pair_dx = dx[i_idx, j_idx]
+                
+                inv_r2 = 1.0 / (pair_r2 + eps2)
+                inv_r4 = inv_r2 * inv_r2
+                inv_r6 = inv_r4 * inv_r2
+                inv_r8 = inv_r4 * inv_r4
+                
+                coef = 6*inv_r8 - 4*inv_r6
+                
+                
+                np.add.at(f, A[i_idx],  coef[:, None] * pair_dx)
+                np.add.at(f, B[j_idx], -coef[:, None] * pair_dx)
+                
+                U += np.sum(inv_r6 - inv_r4 - U_shift)
     return f, U
 
-def forces_and_potential_wall(x, L, delta, k_wall):
+
+def forces_potential_wall(x, L, delta, k_wall):
     """
     Input:
         x = (N, 2) dimensional array of positions
@@ -200,15 +286,18 @@ def forces_and_potential_wall(x, L, delta, k_wall):
     
     return f, U
 
-def energy(x, v, iu, ju, L, delta, k_wall, eps):
+def energy(x, v, cells, r_c, L, delta, k_wall, eps):
     """
     Input:
         x = (N, 2) dimensional position vector
         v = (N, 2) dimentsional velocity vector
-        iu, ju = upper triangular indices of NxN matrix
+        cells = array of np.arrays where cells[c] is the array which 
+        contains the indices of particles in cell c
+        r_c = cutoff radious
         L = size of box
         delta = size of wall buffer
         k_wall = wall elastic constant
+        eps = regularization parameter
     Output :
         K = kinetik energy 
         U_inter = potential energy due to interparticle forces
@@ -219,8 +308,8 @@ def energy(x, v, iu, ju, L, delta, k_wall, eps):
     """
     #K = 1/2 v^2
     K = 0.5 * np.sum(v**2)
-    _, U_inter = forces_and_potential_interactions(x, iu, ju, eps)
-    _, U_wall = forces_and_potential_wall(x, L, delta, k_wall)
+    _, U_inter = forces_potential_interactions(x, cells, r_c, eps)
+    _, U_wall = forces_potential_wall(x, L, delta, k_wall)
     
     E_tot = K + U_inter + U_wall
     return K, U_inter, U_wall, E_tot
@@ -242,15 +331,19 @@ def dmin(x):
     return r_min
     
 
-def step (x, v, iu, ju, L, delta, k_wall, eps, h):
+def step (x, v, cells, r_c, L, delta, k_wall, eps, h):
     """
     Input:
         x = (N, 2) dimensional position vector
         v = (N, 2) dimentsional velocity vector
-        iu, ju = upper triangular indices of NxN matrix
+        cells = array of np.arrays where cells[c] is the array which 
+        contains the indices of particles in cell c
+        r_c = cutoff radious
         L = size of box
         delta = size of wall buffer
         k_wall = wall elastic constant
+        eps = regularization parameter
+        h = step of integrator.
     Output:
         x = (N, 2) dimensional position vector
         v = (N, 2) dimentsional velocity vector
@@ -258,16 +351,16 @@ def step (x, v, iu, ju, L, delta, k_wall, eps, h):
     using a velocity-Vertlet symplectic integrator. 
     """
     
-    f, _ = forces_and_potential_interactions(x, iu, ju, eps)
-    f_wall, _ = forces_and_potential_wall(x, L, delta, k_wall)
+    f, _ = forces_potential_interactions(x, cells, r_c, eps)
+    f_wall, _ = forces_potential_wall(x, L, delta, k_wall)
     f += f_wall
     
     v += 0.5*h*f
     
     x += h*v
     
-    f, _ = forces_and_potential_interactions(x, iu, ju, eps)
-    f_wall, _ = forces_and_potential_wall(x, L, delta, k_wall)
+    f, _ = forces_potential_interactions(x, cells, r_c, eps)
+    f_wall, _ = forces_potential_wall(x, L, delta, k_wall)
     f += f_wall
     
     v += 0.5*h*f
@@ -287,7 +380,11 @@ energies = []
 x = initialize_pos(N, L, d_min, delta, rng)
 v = initialize_vel(N, K_target, rng)
 
-iu, ju = np.triu_indices(N, k=1)
+n_cells = int(L/r_c)
+cell_size = L/n_cells
+
+cells = build_cell(x, n_cells, cell_size)
+
 
 t_sim = 0 
 t = 0
@@ -295,10 +392,11 @@ t = 0
 while (t_sim <= T_MAX):
     if t%speed == 0:
         states.append(x.copy())
-        K, U_inter, U_wall, E_tot = energy(x, v, iu, ju, L, delta, k_wall, eps)
+        K, U_inter, U_wall, E_tot = energy(x, v, cells, r_c, L, delta, k_wall, eps)
         energies.append([t_sim, K, U_inter, U_wall, E_tot])
         print(f"Progress = {(t_sim/T_MAX)*100:.2f}%", end="\r", flush = True)
-    x, v = step(x, v, iu, ju, L, delta, k_wall, eps, h)
+    x, v = step(x, v, cells, r_c, L, delta, k_wall, eps, h)
+    cells = build_cell(x, n_cells, cell_size)
     t_sim = t*h
     t += 1
 print(f"Progress = {(t_sim/T_MAX)*100:.2f}%", end="\r", flush = True)
