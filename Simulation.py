@@ -26,7 +26,7 @@ with open(CONFIG_PATH) as f:
 #L -> Size of the box
 #d_min -> Min initial dist between particles
 #r_c -> cutoff radius
-#K_target -> Initial kinetik energy
+#K_target -> Initial kinetic energy
 #delta -> Size of buffer zone around walls
 #k_wall -> Elastic constant of wall
 
@@ -114,13 +114,13 @@ def initialize_vel(N, K_target, rng):
     """
     Input: 
         N = number of particles
-        K_target = target kinetik energy of the system of particles
+        K_target = target kinetic energy of the system of particles
         rng = input random number generator
     Output:
         v = (N,2) array of velocities
     This function generates the velocity vectors of N particles. Velocities are 
     generated according to a normal distribution (given rng), net momentum is 
-    removed and they are rescaled so that the system has a target kinetik energy.
+    removed and they are rescaled so that the system has a target kinetic energy.
     """
     
     #V generated accoding to (0, 1) normal. v is shape (N, 2)
@@ -129,7 +129,7 @@ def initialize_vel(N, K_target, rng):
     # remove net momentum
     v -= v.mean(axis = 0)
 
-    #Compute total kinetik energy
+    #Compute total kinetic energy
     K = 0.5*np.sum(v**2)
 
     scale = np.sqrt(K_target / K)
@@ -169,7 +169,7 @@ def forces_potential_interactions(x, cells, r_c, eps):
         x = (N,2) np.array of positions.
         cells = array of np.arrays where cells[c] is the array which 
         contains the indices of particles in cell c
-        r_c = cutoff radious
+        r_c = cutoff radius
         eps = regularization parameter
     Output: 
         f = (N, 2) array of forces
@@ -216,43 +216,27 @@ def forces_potential_interactions(x, cells, r_c, eps):
                 if len(B) == 0:
                     continue
                 
-                #Compute differences this is shape len(A), len(B), 2
-                #Here dx[a, b] = [dx, dy] where dx and dy are the distances between
-                #particle x[A[a]] and x[B[b]]
-                dx = x[A][:, None, :] - x[B][None, :, :]
-                
-                #r2 is shape len(A), len(B)
-                r2 = np.sum(dx*dx, axis = 2)
-                
-                mask = r2 < rc2
-                
-                #If all particles distant more than the cutoff, skip
-                if not np.any(mask):
-                    continue
-                
-                i_idx, j_idx = np.where(mask)
-                
-                #If same cell, only use upper triangle
-                if c == n:
-                    valid = i_idx < j_idx
-                    i_idx = i_idx[valid]
-                    j_idx = j_idx[valid]
-                
-                pair_r2 = r2[i_idx, j_idx]
-                pair_dx = dx[i_idx, j_idx]
-                
-                inv_r2 = 1.0 / (pair_r2 + eps2)
-                inv_r4 = inv_r2 * inv_r2
-                inv_r6 = inv_r4 * inv_r2
-                inv_r8 = inv_r4 * inv_r4
-                
-                coef = 6*inv_r8 - 4*inv_r6
-                
-                
-                np.add.at(f, A[i_idx],  coef[:, None] * pair_dx)
-                np.add.at(f, B[j_idx], -coef[:, None] * pair_dx)
-                
-                U += np.sum(inv_r6 - inv_r4 - U_shift)
+                #COMPUTE INTERACTIONS BETHWEEN CELL A AND B
+                for i in A:
+                    for j in B:
+                        if c == n and i >= j:
+                            continue
+                        #dx = [dx, dy]
+                        dx = x[i] - x[j]
+                        r2 = np.sum(dx*dx)
+                        if r2 >= rc2:
+                            #Skip if distance more than cutoff
+                            continue
+                        inv_r2 = 1.0 / (r2 + eps2)
+                        inv_r4 = inv_r2 * inv_r2
+                        inv_r6 = inv_r4 * inv_r2
+                        inv_r8 = inv_r4 * inv_r4
+                        coef = 6*inv_r8 - 4*inv_r6
+                        
+                        f[i] += coef*dx
+                        f[j] -= coef*dx
+                        
+                        U += inv_r6 - inv_r4 - U_shift
     return f, U
 
 
@@ -266,7 +250,7 @@ def forces_potential_wall(x, L, delta, k_wall):
         f = (N, 2) array of forces
         U = elastic potential energy
     This function, computes the forces due to the wall interactions and the 
-    corresponding potetial energy.This is modelled as an elastic force which 
+    corresponding potential energy.This is modelled as an elastic force which 
     acts on a buffer zone of lenght delta from the walls.
     """
     f = np.zeros_like(x)
@@ -293,13 +277,13 @@ def energy(x, v, cells, r_c, L, delta, k_wall, eps):
         v = (N, 2) dimentsional velocity vector
         cells = array of np.arrays where cells[c] is the array which 
         contains the indices of particles in cell c
-        r_c = cutoff radious
+        r_c = cutoff radius
         L = size of box
         delta = size of wall buffer
         k_wall = wall elastic constant
         eps = regularization parameter
     Output :
-        K = kinetik energy 
+        K = kinetic energy 
         U_inter = potential energy due to interparticle forces
         U_wall = potential due to wall interactions
         E_tot = total energy 
@@ -338,7 +322,7 @@ def step (x, v, cells, r_c, L, delta, k_wall, eps, h):
         v = (N, 2) dimentsional velocity vector
         cells = array of np.arrays where cells[c] is the array which 
         contains the indices of particles in cell c
-        r_c = cutoff radious
+        r_c = cutoff radius
         L = size of box
         delta = size of wall buffer
         k_wall = wall elastic constant
@@ -382,12 +366,14 @@ v = initialize_vel(N, K_target, rng)
 
 n_cells = int(L/r_c)
 cell_size = L/n_cells
+r_skin = cell_size - r_c
 
 cells = build_cell(x, n_cells, cell_size)
 
 
 t_sim = 0 
 t = 0
+x_ref = x.copy()
 
 while (t_sim <= T_MAX):
     if t%speed == 0:
@@ -396,7 +382,9 @@ while (t_sim <= T_MAX):
         energies.append([t_sim, K, U_inter, U_wall, E_tot])
         print(f"Progress = {(t_sim/T_MAX)*100:.2f}%", end="\r", flush = True)
     x, v = step(x, v, cells, r_c, L, delta, k_wall, eps, h)
-    cells = build_cell(x, n_cells, cell_size)
+    if np.max(np.sum((x - x_ref)**2, axis=1)) > (r_skin/2)**2:
+        cells = build_cell(x, n_cells, cell_size)
+        x_ref = x.copy()
     t_sim = t*h
     t += 1
 print(f"Progress = {(t_sim/T_MAX)*100:.2f}%", end="\r", flush = True)

@@ -1,9 +1,9 @@
 {
  "physical":{
-     "N": 128,
+     "N": 64,
      "L": 100,
      "d_min": 1.5,
-     "r_c": 2.5,
+     "r_c": 5.0,
      "K_target": 1.5,
      "delta": 1.0,
      "k_wall": 5.0
@@ -12,8 +12,8 @@
      "h": 0.0005,
      "eps": 0.01,
      "speed": 1000,
-     "T_MAX": 10, 
-     "seed": null      
+     "T_MAX": 500, 
+     "seed": 25     
      },
  "model":{
      "pair_potential": "1/r^6 - 1/r^4"
