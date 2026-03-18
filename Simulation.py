@@ -8,88 +8,42 @@ Created on Fri Jan 30 14:19:28 2026
 import numpy as np
 import time, json
 from pathlib import Path
-
-
-###############################################################################
-################################# PARAMETERS ##################################
-###############################################################################
-
-# LOAD CONFIGURATION FILE
-CONFIG_PATH = Path("CONFIG.json")
-with open(CONFIG_PATH) as f:
-    config = json.load(f)
-    
-#EXTRACT PARAMETERS
-
-#PHYSICAL PARAMETERS
-#N -> Number of particles
-#L -> Size of the box
-#d_min -> Min initial dist between particles
-#r_c -> cutoff radius
-#K_target -> Initial kinetic energy
-#delta -> Size of buffer zone around walls
-#k_wall -> Elastic constant of wall
-
-N = config["physical"]["N"]                     
-L = config["physical"]["L"]                     
-d_min = config["physical"]["d_min"] 
-r_c = config["physical"]["r_c"]            
-K_target = config["physical"]["K_target"]       
-delta = config["physical"]["delta"]             
-k_wall = config["physical"]["k_wall"]
-
-#SIMULATION PARAMETERS
-#h -> Pace of the simulation
-#eps -> Smoothing parameter for close range interactions
-#speed -> Speed at which we store positions/energies
-#T_MAX -> Total time of the simulation
-
-h = config["simulation"]["h"]
-eps = config["simulation"]["eps"]
-speed = config["simulation"]["speed"]
-T_MAX = config["simulation"]["T_MAX"]
-seed = config["simulation"]["seed"]
-
-
-rng = np.random.default_rng(seed)
-#If "seed":null then seed = None
+from loading import load_config
 
 
 ###############################################################################
 ############################### MAIN FUNCTIONS ################################
 ###############################################################################
 
-def initialize_pos(N, L, d_min, delta, rng, max_tries = 2000):  
+def initialize_pos(p, rng, max_tries = 2000):  
     """
     Input:
-        N = number of particles
-        d_min = minimum distance between particles
-        delta = size of wall buffer zone
+        p = Instance of SimParameters
         rng = random number generator
         max_tries = maximum number of attempts
     Output:
-        pos = (N, 2) dimensional array of positions
+        pos = (N, 2) dimensional numpy array of positions
     This function generates N points randomly in [delta, L-delta] so that their 
     mutual distance is greater than d_min. Points are generated using inputed rng.    
     At every iteration a new point is generated ensuring that its dstance from
     all previously generated points is d_min. If not, point is rejected and new 
     attempt is made at most max_tries times. 
     """
-    
     # Initialize empty array
-    pos = np.empty((N, 2), dtype=float)
+    
+    pos = np.empty((p.N, 2), dtype=float)
     
     placed = 0
     tries = 0
     
-    d2_min = d_min * d_min
+    d2_min = p.d_min * p.d_min
 
-    while placed < N:
+    while placed < p.N:
         if tries > max_tries:
             raise RuntimeError("Failed to place all particles. Decrease d_min or increase L.")
         
         #Candidate [x, y] where x and y are generated uniformly on [delta, L-delta] 
-        candidate = rng.random(2) * (L-2*delta) + delta
+        candidate = rng.random(2) * (p.L-2*p.delta) + p.delta
         
         #First particle is placed
         if placed == 0:
@@ -110,11 +64,10 @@ def initialize_pos(N, L, d_min, delta, rng, max_tries = 2000):
     
     return pos
 
-def initialize_vel(N, K_target, rng):
+def initialize_vel(p, rng):
     """
     Input: 
-        N = number of particles
-        K_target = target kinetic energy of the system of particles
+        p = Instance of SimParameters
         rng = input random number generator
     Output:
         v = (N,2) array of velocities
@@ -124,7 +77,7 @@ def initialize_vel(N, K_target, rng):
     """
     
     #V generated accoding to (0, 1) normal. v is shape (N, 2)
-    v = rng.normal(0.0, 1.0, (N, 2))
+    v = rng.normal(0.0, 1.0, (p.N, 2))
 
     # remove net momentum
     v -= v.mean(axis = 0)
@@ -132,7 +85,7 @@ def initialize_vel(N, K_target, rng):
     #Compute total kinetic energy
     K = 0.5*np.sum(v**2)
 
-    scale = np.sqrt(K_target / K)
+    scale = np.sqrt(p.K_0 / K)
     v *= scale
 
     return v
@@ -163,156 +116,9 @@ def build_cell(x, n_cells, cell_size):
     cells = [np.array(c, dtype = int) for c in cells]
     return cells
 
-def forces_potential_interactions(x, cells, r_c, eps):
-    """
-    Input: 
-        x = (N,2) np.array of positions.
-        cells = array of np.arrays where cells[c] is the array which 
-        contains the indices of particles in cell c
-        r_c = cutoff radius
-        eps = regularization parameter
-    Output: 
-        f = (N, 2) array of forces
-        U = potential energy due to interactions
-    This function computes the array of forces f and the potential energy U
-    of particle interactions using a cell list approach. Forces are computed 
-    using the potential U(r) = 1/r^6 -1/r^4 which is set to zero for r>r_c and
-    shifted to ensure continuity. U = U(r) -U(r_c). A smoothing correction 
-    of eps is added to the computation of the distance between particles.
-    """
-    N = len(x)
-    n_cells = int(np.sqrt(len(cells)))
-    rc2 = r_c*r_c
-    eps2 = eps*eps
-    #Compute potential shift
-    U_shift = 1/(r_c)**6 - 1/(r_c)**4
-    
-    f = np.zeros((N, 2))
-    U = 0.0
-    
-    #Neighbouring cells that will be checked 
-    neighbors = [(0,0),(1,0),(-1,1),(0,1),(1,1)]
-    
-    #Cycle across all cells
-    for cy in range(n_cells):
-        for cx in range(n_cells):
-            #Cycle across all cells
-            c = cx + cy*n_cells
-            A = cells[c]
-            
-            #If cell is empty skip
-            if len(A)==0:
-                continue
-            
-            #Check all 5 neighbouring cells
-            for nx, ny in neighbors:
-                #If neighbour goes out of box skip
-                if (cx + nx) < 0 or (cx + nx) >= n_cells or (cy + ny) >= n_cells:
-                    continue
-                n = cx + nx + (cy + ny)*n_cells
-                B = cells[n]
-                
-                #If neighbouring cell is empty skip
-                if len(B) == 0:
-                    continue
-                
-                #COMPUTE INTERACTIONS BETHWEEN CELL A AND B
-                for i in A:
-                    for j in B:
-                        if c == n and i >= j:
-                            continue
-                        #dx = [dx, dy]
-                        dx = x[i] - x[j]
-                        r2 = np.sum(dx*dx)
-                        if r2 >= rc2:
-                            #Skip if distance more than cutoff
-                            continue
-                        inv_r2 = 1.0 / (r2 + eps2)
-                        inv_r4 = inv_r2 * inv_r2
-                        inv_r6 = inv_r4 * inv_r2
-                        inv_r8 = inv_r4 * inv_r4
-                        coef = 6*inv_r8 - 4*inv_r6
-                        
-                        f[i] += coef*dx
-                        f[j] -= coef*dx
-                        
-                        U += inv_r6 - inv_r4 - U_shift
-    return f, U
 
 
-def forces_potential_wall(x, L, delta, k_wall):
-    """
-    Input:
-        x = (N, 2) dimensional array of positions
-        delta = size of wall buffer
-        k_wall = wall elastic constant
-    Output:
-        f = (N, 2) array of forces
-        U = elastic potential energy
-    This function, computes the forces due to the wall interactions and the 
-    corresponding potential energy.This is modelled as an elastic force which 
-    acts on a buffer zone of lenght delta from the walls.
-    """
-    f = np.zeros_like(x)
-    U = 0.0
-    
-    #Upper wall x = L, y= L
-    active = x > (L-delta)
-    d = x[active] - (L - delta)
-    f [active] += -k_wall*d
-    U += 0.5 * k_wall * np.sum(d*d)
-    
-    #Lower wall x = 0, y= 0
-    active = x < delta
-    d = delta - x[active]
-    f [active] += k_wall*d
-    U += 0.5 * k_wall * np.sum(d*d)
-    
-    return f, U
 
-def energy(x, v, cells, r_c, L, delta, k_wall, eps):
-    """
-    Input:
-        x = (N, 2) dimensional position vector
-        v = (N, 2) dimentsional velocity vector
-        cells = array of np.arrays where cells[c] is the array which 
-        contains the indices of particles in cell c
-        r_c = cutoff radius
-        L = size of box
-        delta = size of wall buffer
-        k_wall = wall elastic constant
-        eps = regularization parameter
-    Output :
-        K = kinetic energy 
-        U_inter = potential energy due to interparticle forces
-        U_wall = potential due to wall interactions
-        E_tot = total energy 
-    This function, given a state of the system x, v (positions and 
-    velocities) returns the various energies of the system.
-    """
-    #K = 1/2 v^2
-    K = 0.5 * np.sum(v**2)
-    _, U_inter = forces_potential_interactions(x, cells, r_c, eps)
-    _, U_wall = forces_potential_wall(x, L, delta, k_wall)
-    
-    E_tot = K + U_inter + U_wall
-    return K, U_inter, U_wall, E_tot
-
-def dmin(x):
-    """
-    Input:
-        x = (N, 2) dimensional array of positions
-    Output:
-        r_min = the minimum distance between particles 
-    """
-    N = len(x)
-    iu, ju = np.triu_indices(N, k=1)
-    
-    d = x[iu] - x[ju]
-    
-    r2 = np.sum(d*d, axis=1)
-    r_min = np.sqrt(np.min(r2))
-    return r_min
     
 
 def step (x, v, cells, r_c, L, delta, k_wall, eps, h):
@@ -355,14 +161,16 @@ def step (x, v, cells, r_c, L, delta, k_wall, eps, h):
 ############################### MAIN EXECUTION ################################
 ###############################################################################
 
-# INITIALIZATION OF VARIABLES
+
+
+INITIALIZATION OF VARIABLES
 
 start_time = time.time()
 states = []
 energies = []
 
 x = initialize_pos(N, L, d_min, delta, rng)
-v = initialize_vel(N, K_target, rng)
+v = initialize_vel(N, K_0, rng)
 
 n_cells = int(L/r_c)
 cell_size = L/n_cells

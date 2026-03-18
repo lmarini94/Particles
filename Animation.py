@@ -63,7 +63,7 @@ physical_time = energies[:, 0]
 #PHYSICAL PARAMETER
 L = config["physical"]["L"]
 N = config["physical"]["N"]
-K_target = config["physical"]["K_target"] 
+K_0 = config["physical"]["K_0"] 
 #SIMULATION PARAMETER
 T_MAX = config["simulation"]["T_MAX"]
 
@@ -90,7 +90,7 @@ scat = ax.scatter([], [], s = 8)
 params = (
     f"$N$ = {N}\n"
     f"$L$ = {L}\n"
-    f"$K_0$ = {K_target}\n"
+    f"$K_0$ = {K_0}\n"
     f"$T_{{max}}$ = {T_MAX}"
 )
 

@@ -59,7 +59,7 @@ energies = np.load(myrun/"energies.npy")
 #PHYSICAL PARAMETER
 L = config["physical"]["L"]
 N = config["physical"]["N"]
-K_target = config["physical"]["K_target"] 
+K_0 = config["physical"]["K_0"] 
 delta = config["physical"]["delta"]             
 k_wall = config["physical"]["k_wall"]
 
@@ -78,7 +78,7 @@ print("\nSimulated on " + created_at)
 print("\n-------Physical parameters-------")
 print("Number of particles N =", N)
 print("L =", L)
-print("Initial energy K0 =", K_target)
+print("Initial energy K0 =", K_0)
 print("Size of wall buffer =", delta)
 print("k_wall =", k_wall)
 print("------Simulation parameters------")

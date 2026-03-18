@@ -7,10 +7,10 @@ Created on Tue Mar 17 16:20:10 2026
 
 import numpy as np
 
-def build_cell(s, p):
+def build_cell(x, p):
     """
     Input:
-        s = state of the system
+        x = state of the system
         p = system parameters
     This function takes a configuration of the system and updates s.cells 
     accordingly. 
@@ -18,7 +18,7 @@ def build_cell(s, p):
     
     cells = [[] for _ in range(p.n_cells**2)]
     
-    for i, pos in enumerate(s.x):
+    for i, pos in enumerate(x):
         #Vectorial coordinates of cell
         cx = int(pos[0]/p.cell_size)
         cy = int(pos[1]/p.cell_size)
@@ -29,4 +29,4 @@ def build_cell(s, p):
     #Convert into np.arrays
     cells = [np.array(c, dtype = int) for c in cells]
     
-    s.cells = cells
+    return cells

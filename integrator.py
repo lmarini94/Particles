@@ -31,13 +31,15 @@ def step (s, p):
     f_wall, _ = forces_potential_wall(s, p)
     f += f_wall
     
-    s.v += 0.5*p.h*f
+    v = s.v + 0.5*p.h*f
     
-    s.x += p.h*s.v
+    x = s.x + p.h*s.v
     
     f, _ = forces_potential_interactions(s, p)
     f_wall, _ = forces_potential_wall(s, p)
     f += f_wall
     
-    s.v += 0.5*p.h*f
+    v += 0.5*p.h*f
+    
+    return x, v
     

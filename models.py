@@ -38,4 +38,3 @@ class SimIO:
     states_file: str
     energies_file: str
     
-p = SimState()

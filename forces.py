@@ -21,7 +21,7 @@ def forces_potential_interactions(s, p):
     shifted to ensure continuity. U = U(r) -U(r_c). A smoothing correction 
     of eps is added to the computation of the distance between particles.
     """
-    N = len(p.N)
+    N = p.N
     n_cells = int(np.sqrt(len(s.cells)))
     rc2 = p.r_c*p.r_c
     eps2 = p.eps*p.eps

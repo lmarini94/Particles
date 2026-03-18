@@ -7,7 +7,7 @@ Created on Tue Mar 17 19:00:28 2026
 
 import numpy as np
 
-def initialize_pos(s, p, rng, max_tries = 2000):  
+def initialize_pos(p, rng, max_tries = 2000):  
     """
     Input:
         p = Instance of SimParameters
