@@ -7,14 +7,16 @@ Created on Tue Mar 17 19:05:53 2026
 
 import numpy as np
 
-def forces_potential_interactions(s, p):
+def forces_potential_interactions(x, cells, p):
     """
     Input: 
-        s = instance of SimSate.
-        p = instance of SimParameters
+        x = (N, 2) np.array of positions. 
+        cells = cell list
+        p = simulation parameters. 
     Output: 
         f = (N, 2) array of forces
         U = potential due to interactions
+    Given a state of the sys
     This function computes the array of forces f and the potential energy U
     of particle interactions using a cell list approach. Forces are computed 
     using the potential U(r) = 1/r^6 -1/r^4 which is set to zero for r>r_c and
@@ -22,7 +24,7 @@ def forces_potential_interactions(s, p):
     of eps is added to the computation of the distance between particles.
     """
     N = p.N
-    n_cells = int(np.sqrt(len(s.cells)))
+    n_cells = p.n_cells
     rc2 = p.r_c*p.r_c
     eps2 = p.eps*p.eps
     
@@ -40,7 +42,7 @@ def forces_potential_interactions(s, p):
         for cx in range(n_cells):
             #Cycle across all cells
             c = cx + cy*n_cells
-            A = s.cells[c]
+            A = cells[c]
             
             #If cell is empty skip
             if len(A)==0:
@@ -52,7 +54,7 @@ def forces_potential_interactions(s, p):
                 if (cx + nx) < 0 or (cx + nx) >= n_cells or (cy + ny) >= n_cells:
                     continue
                 n = cx + nx + (cy + ny)*n_cells
-                B = s.cells[n]
+                B = cells[n]
                 
                 #If neighbouring cell is empty skip
                 if len(B) == 0:
@@ -64,7 +66,7 @@ def forces_potential_interactions(s, p):
                         if c == n and i >= j:
                             continue
                         #dx = [dx, dy]
-                        dx = s.x[i] - s.x[j]
+                        dx = x[i] - x[j]
                         r2 = np.sum(dx*dx)
                         if r2 >= rc2:
                             #Skip if distance more than cutoff
@@ -82,10 +84,10 @@ def forces_potential_interactions(s, p):
                         
     return f, U
 
-def forces_potential_wall(s, p):
+def forces_potential_wall(x, p):
     """
     Input: 
-        s = instance of SimSate.
+        x = (N, 2) np.array of positions. 
         p = instance of SimParameters
     Output: 
         f = (N, 2) array of forces
@@ -94,18 +96,18 @@ def forces_potential_wall(s, p):
     corresponding potential energy.This is modelled as an elastic force which 
     acts on a buffer zone of lenght delta from the walls.
     """
-    f = np.zeros_like(s.x)
+    f = np.zeros_like(x)
     U = 0.0
     
     #Upper wall x = L, y= L
-    active = s.x > (p.L-p.delta)
-    d = s.x[active] - (p.L - p.delta)
+    active = x > (p.L-p.delta)
+    d = x[active] - (p.L - p.delta)
     f [active] += -p.k_wall*d
     U += 0.5 * p.k_wall * np.sum(d*d)
     
     #Lower wall x = 0, y= 0
-    active = s.x < p.delta
-    d = p.delta - s.x[active]
+    active = x < p.delta
+    d = p.delta - x[active]
     f [active] += p.k_wall*d
     U += 0.5 * p.k_wall * np.sum(d*d)
     

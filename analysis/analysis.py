@@ -16,7 +16,8 @@ import json, time
 
 
 def select_run(latest=True, runs_dir="runs"):
-    runs_dir = Path(runs_dir)
+    
+    runs_dir = Path(__file__).resolve().parent.parent / runs_dir
     
     #Check if runs directory exists
     if not runs_dir.exists():
@@ -57,16 +58,16 @@ states = np.load(myrun/"states.npy")
 energies = np.load(myrun/"energies.npy")
 
 #PHYSICAL PARAMETER
-L = config["physical"]["L"]
-N = config["physical"]["N"]
-K_0 = config["physical"]["K_0"] 
-delta = config["physical"]["delta"]             
-k_wall = config["physical"]["k_wall"]
+L = config["parameters"]["physical"]["L"]
+N = config["parameters"]["physical"]["N"]
+K_0 = config["parameters"]["physical"]["K_0"] 
+delta = config["parameters"]["physical"]["delta"]             
+k_wall = config["parameters"]["physical"]["k_wall"]
 
 #SIMULATION PARAMETER
-speed = config["simulation"]["speed"]
-h = config["simulation"]["h"]
-T_MAX = config["simulation"]["T_MAX"]
+speed = config["parameters"]["simulation"]["speed"]
+h = config["parameters"]["simulation"]["h"]
+T_MAX = config["parameters"]["simulation"]["T_MAX"]
 
 
 #MODEL TIMING

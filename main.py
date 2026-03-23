@@ -5,10 +5,11 @@ Created on Wed Mar 18 15:05:57 2026
 @author: marin
 """
 
-from loading import load_config
-from core import Simulation
+from simulation.loading import load_config
+from simulation.core import Simulation
 
 def main():
+    #Load simulation parameters, path
     params, paths, rng = load_config()
     sim = Simulation(params, rng)
     sim.initialize()

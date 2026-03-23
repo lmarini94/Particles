@@ -22,6 +22,7 @@ class SimParameters:
     L: float
     d_min: float
     r_c: float
+    r_skin: float
     K_0: float
     delta: float
     k_wall: float

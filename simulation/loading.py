@@ -8,7 +8,7 @@ Created on Tue Mar 17 13:27:33 2026
 import json
 import numpy as np
 from pathlib import Path
-from models import SimParameters, SimIO
+from simulation.models import SimParameters, SimIO
 
 def _validate(p: SimParameters):
     """
@@ -81,14 +81,17 @@ def load_config(path = "CONFIG.json"):
     try:
         _L = config["physical"]["L"]
         _r_c = config["physical"]["r_c"]
-        _n_cells = int(_L/_r_c)
+        _r_skin = config["physical"]["r_skin"]
+        r_list = _r_c + _r_skin
+        _n_cells = int(_L/r_list)
         _cell_size = _L/_n_cells
         params = SimParameters(
             #PHYSICAL
             N = config["physical"]["N"],                    
             L = _L,                  
             d_min = config["physical"]["d_min"], 
-            r_c = _r_c,           
+            r_c = _r_c,   
+            r_skin = _r_skin,
             K_0 = config["physical"]["K_0"],       
             delta = config["physical"]["delta"],             
             k_wall = config["physical"]["k_wall"],
