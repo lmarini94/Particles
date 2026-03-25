@@ -83,7 +83,7 @@ def load_config(path = "CONFIG.json"):
         _r_c = config["physical"]["r_c"]
         _r_skin = config["physical"]["r_skin"]
         r_list = _r_c + _r_skin
-        _n_cells = int(_L/r_list)
+        _n_cells = max(int(_L/r_list), 1)
         _cell_size = _L/_n_cells
         params = SimParameters(
             #PHYSICAL

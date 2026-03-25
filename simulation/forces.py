@@ -32,7 +32,7 @@ def forces_potential_interactions(x, cells, p):
     U = 0.0
     
     #Compute potential shift
-    U_shift = 1/(p.r_c)**6 - 1/(p.r_c)**4
+    U_shift = 1/(p.r_c**2 + eps2)**3 - 1/(p.r_c**2 + eps2)**2
     
     #Neighbouring cells that will be checked 
     neighbors = [(0,0),(1,0),(-1,1),(0,1),(1,1)]

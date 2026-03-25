@@ -97,7 +97,7 @@ def radial_distribution(states, L, r_cut, bins=100, r_max=None):
     T, N, _ = states.shape
     
     if r_max is None:
-        r_max = max(L/2, r_cut)
+        r_max = min(L/2, r_cut)
 
     # particle density
     rho = N / (L*L)
