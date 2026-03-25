@@ -1,14 +1,14 @@
 # Particles
 
-This projects implements a **two-dimensional molecular dynamics** simulation of interacting particles confined in a box with soft walls. 
-The interaction between particles uses a **Lennard-Jones type potential** while the soft wall is modelled as an elastic force acting within a buffer zone from the wall. 
-The numerical simulation is carried out using a **Velocity - Vertlet algorithm** to integrate the equations of motion. 
+This project implements a **two-dimensional molecular dynamics** simulation of interacting particles confined in a box with **soft walls**. 
+Particle-particle interactions use a **Lennard-Jones type potential**, while the walls are modeled as an elastic force acting within a buffer zone near the boundary. 
+Time integration uses a **Velocity-Vertlet algorithm**. 
 Tools for energy monitoring and post-simulation analysis are also provided. 
 
 ## Model details
 
 - ### Initialization (see `loading.py` and `initialization.py`)
-  At the beginning of the simulation $N$, particles are randomly generated inside a square box of side $\[\delta, L-\delta\]$ so that their mutual distance is at least $d_{\min}$.
+  At the beginning of the simulation $N$ particles are randomly generated within the square $\[\delta, L-\delta\]\times\[\delta, L-\delta\]$ so that their mutual distance is at least $d_{\min}$.
   The velocities are then randomly generated according to a normal distribution, net momentum is removed and they are rescaled to achieve a target initial kinetic energy.
 - ### Soft wall (see `forces.py`)
   Particles are confined in the square box using **soft (penetrable) walls** rather than perfectly reflecting boundaries.
@@ -16,11 +16,11 @@ Tools for energy monitoring and post-simulation analysis are also provided.
   This approach avoids discontinuous velocity flips at the boundary and yields a continuous, energy-based wall interaction.
 - ### Potential (see `forces.py`)
   The potential between particles is modelled after $U(r) = \frac{1}{r^6} - \frac{1}{r^4}$.
-  To avoid instability at small distances, this potential is regularized substituting $r^2 \rightarrow r^2 + \varepsilon^2 $.
-  Since interactions decay fast as distance increases, they are truncated at a cutoff radius $r_c$. The potential is then shifted to ensure continuity.
+  To avoid instability at small distances, this potential is regularized by substituting $r^2 \rightarrow r^2 + \varepsilon^2$.
+  Since interactions decay fast as distance increases, they are truncated at a cutoff radius $r_c$. The potential is then shifted to ensure continuity at $r_c$.
 - ### Cell lists (see `forces.py` and `cells.py`)
   Since the interaction is zero at distances $r \ge r_c$, we implement a cell-list approach.
-  The domain is partitioned into square cells whose side is greater than the cutoff radius, then interactions are computed only with the neghbouring cells. 
+  The domain is partitioned into square cells whose side is greater than the cutoff radius, then interactions are computed only with the neghboring cells. 
   
 ## Repository structure
 ```
@@ -33,7 +33,7 @@ Tools for energy monitoring and post-simulation analysis are also provided.
 ├── runs/                # Output folder 
 ├── analysis/            # Post processing utilities
 │   ├── analysis.py      # Energy, RDF analysis and plots
-│   ├── animation.py     # Create gif animation
+│   ├── animation.py     # Create GIF animation
 └── CONFIG.json          # Simulation parameters
 ```
 
@@ -57,7 +57,7 @@ You will likely need:
    python main.py
    ```
 4. The outputs (`states.npy` and `energies.npy`) are saved in a timestamped folder `run/YYYYMMDD_HHMM`
-5. Run the analysis and the animation scripts
+5. Run the analysis and animation scripts
    ```bash
    python analysis/analysis.py
    python analysis/animation.py
@@ -74,8 +74,8 @@ The configuration file is divided into sections:
   - `d_min`: minimum initialization distance
   - `r_c`: cutoff radius
   - `r_skin`: neighbor-list skin distance
-  - `K_0`: initial kietic energy of the system
-  - `k_wall`,`delta`: parameter modelling soft wall (stiffness and size of buffer)
+  - `K_0`: initial kinetic energy of the system
+  - `k_wall`,`delta`: parameters modelling the soft wall (stiffness and size of buffer)
 
 - `simulation`
   - `h`: time step
@@ -96,8 +96,8 @@ The configuration file is divided into sections:
 At the end of a run, the outputs are saved in a timestamped folder `run/YYYYMMDD_HHMM`.
 The outputs include:
 
-- `states.npy` which stores a `(T, N, 2)` dimensional array of positions over time
-- `energies.npy` which saves all energy components over time (potential due to wall, interactions, kinetic) in a NumPy `.npy`
+- `states.npy` which stores a `(T, N, 2)` array of positions over time
+- `energies.npy` which stores all energy components over time (potential due to wall, interactions, kinetic) in a NumPy `.npy`
 
 
 ## Analysis & visualization
