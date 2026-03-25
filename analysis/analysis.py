@@ -7,78 +7,42 @@ Created on Fri Feb  6 18:09:22 2026
 
 import numpy as np
 import matplotlib.pyplot as plt
-from pathlib import Path
-import json, time
+import time
+from load_metadata import select_run, load_data
+
 
 ###############################################################################
-############################# SELECTION OF RUN ################################
+################################# LOAD DATA ###################################
 ###############################################################################
-
-
-def select_run(latest=True, runs_dir="runs"):
-    
-    runs_dir = Path(__file__).resolve().parent.parent / runs_dir
-    
-    #Check if runs directory exists
-    if not runs_dir.exists():
-        raise FileNotFoundError(f"Runs directory '{runs_dir}' does not exist.")
-
-    runs = sorted([d.name for d in runs_dir.iterdir() if d.is_dir()])
-
-    if not runs:
-        raise RuntimeError("No runs found in directory.")
-
-    if latest:
-        run_name = runs[-1]
-        print(f"Using latest run: {run_name}")
-        return runs_dir / run_name
-
-    # manual selection
-    run_name = input("Enter run timestamp (YYYYMMDD_HHMM): ")
-
-    if run_name not in runs:
-        raise ValueError(f"Run '{run_name}' not found in {runs_dir}")
-    
-    print(f"Using run: {run_name}")
-    return runs_dir / run_name
 
 myrun = select_run()
-
-###############################################################################
-############################### IMPORT DATA ###################################
-###############################################################################
-
-# LOAD CONFIGURATION FILE
-CONFIG_PATH = Path(myrun/"run_parameters.json")
-with open(CONFIG_PATH) as f:
-    config = json.load(f)
+metadata, states, energies = load_data(myrun)
     
-#LOAD STATES AND ENERGIES FILE
-states = np.load(myrun/"states.npy")
-energies = np.load(myrun/"energies.npy")
 
 #PHYSICAL PARAMETER
-L = config["parameters"]["physical"]["L"]
-N = config["parameters"]["physical"]["N"]
-K_0 = config["parameters"]["physical"]["K_0"] 
-delta = config["parameters"]["physical"]["delta"]             
-k_wall = config["parameters"]["physical"]["k_wall"]
+L = metadata["parameters"]["physical"]["L"]
+N = metadata["parameters"]["physical"]["N"]
+r_c = metadata["parameters"]["physical"]["r_c"]
+K_0 = metadata["parameters"]["physical"]["K_0"] 
+delta = metadata["parameters"]["physical"]["delta"]             
+k_wall = metadata["parameters"]["physical"]["k_wall"]
 
 #SIMULATION PARAMETER
-speed = config["parameters"]["simulation"]["speed"]
-h = config["parameters"]["simulation"]["h"]
-T_MAX = config["parameters"]["simulation"]["T_MAX"]
+speed = metadata["parameters"]["simulation"]["speed"]
+h = metadata["parameters"]["simulation"]["h"]
+T_MAX = metadata["parameters"]["simulation"]["T_MAX"]
 
 
 #MODEL TIMING
-created_at = config["Created_at"]
-t_tot = config["Simulation_duration"]
+created_at = metadata["Created_at"]
+t_tot = metadata["Simulation_duration"]
 formatted_time = time.strftime("%H:%M:%S", time.gmtime(t_tot))
 
 print("\nSimulated on " + created_at)
 print("\n-------Physical parameters-------")
 print("Number of particles N =", N)
 print("L =", L)
+print("Cutoff radius =", r_c)
 print("Initial energy K0 =", K_0)
 print("Size of wall buffer =", delta)
 print("k_wall =", k_wall)
@@ -92,7 +56,7 @@ print(f"Simulation completed in {formatted_time}")
 
 
 ###############################################################################
-########################## ANALYSIS AND DIAGNOSTICS ############################
+########################## ANALYSIS AND DIAGNOSTICS ###########################
 ###############################################################################
 
 #Recall energies is of the type [t_sim, K, U, U_wall, E_tot]
@@ -119,7 +83,7 @@ print("rel range =", (E.max() - E.min()) / abs(E[0]))
 ###############################################################################
 
 
-def radial_distribution(states, L, bins=100, r_max=None):
+def radial_distribution(states, L, r_cut, bins=100, r_max=None):
     """
     Input:
         states = (T, N, 2) dimensional array with the positions of the system
@@ -133,7 +97,7 @@ def radial_distribution(states, L, bins=100, r_max=None):
     T, N, _ = states.shape
     
     if r_max is None:
-        r_max = L/2
+        r_max = max(L/2, r_cut)
 
     # particle density
     rho = N / (L*L)
@@ -171,7 +135,7 @@ def radial_distribution(states, L, bins=100, r_max=None):
 
     return r, g
 
-def rdf_time_series(states, L, window = 20, step = 10, bins = 100, r_max = None):
+def rdf_time_series(states, physical_time, L, r_cut, window = 20, step = 10, bins = 100, r_max = None):
     """
     Input:
         states = (T, N, 2) dimensional array with the positions of the system
@@ -201,20 +165,21 @@ def rdf_time_series(states, L, window = 20, step = 10, bins = 100, r_max = None)
 
     
     #Computes r once
-    r, _ = radial_distribution(states[:1], L, bins = bins, r_max = r_max,)
+    r, _ = radial_distribution(states[:1], L, r_c, bins = bins, r_max = r_max,)
     
     #Compute the array of times 
     times_idx = np.arange(0, T - window + 1, step)
+    times_phys = physical_time[times_idx + window // 2]
     g_t = np.empty((len(times_idx), bins), dtype = float) 
     
     for i, t0 in enumerate(times_idx):
-        _, g = radial_distribution(states[t0:(t0+window)], L, bins=bins, r_max = r_max)
+        _, g = radial_distribution(states[t0:(t0+window)], L, r_c, bins=bins, r_max = r_max)
         g_t[i] = g
     
-    return times_idx, r, g_t
+    return times_phys, r, g_t
 
 
-r, g = radial_distribution(states, L)
+r, g = radial_distribution(states, L, r_c)
 
 ###############################################################################
 ################################### GRAPHS ####################################
@@ -253,17 +218,17 @@ plt.savefig(myrun/"RDF.jpg")
 plt.show()
 
 #TIME RESOLVED RADIAL DISTRIBUTION FUNCTION
-times_idx, r, g_t = rdf_time_series(states, L)
+times_phys, r, g_t = rdf_time_series(states, physical_time, L, r_c)
 plt.figure()
 plt.imshow(
     g_t,
     aspect="auto",
     origin="lower",
-    extent=[r[0], r[-1], times_idx[0], times_idx[-1]]
+    extent=[r[0], r[-1], times_phys[0], times_phys[-1]]
 )
 plt.colorbar(label="g(r, t)")
 plt.xlabel("r")
-plt.ylabel("frame index (window start)")
+plt.ylabel("Physical time (window midpoint)")
 plt.title("Time-resolved radial distribution function")
 plt.savefig(myrun/"time_resolved_RDF.jpg")
 plt.show()

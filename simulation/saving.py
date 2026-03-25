@@ -10,11 +10,11 @@ import time
 import numpy as np
 from pathlib import Path
 
-def save_run(p, save_path, states, energies, total_time, base_dir = "runs"):
+def save_run(p, outputs, states, energies, total_time, base_dir = "runs"):
     """
     Input:
         p = instance of SimParameters
-        save_path = instance of SimIO
+        outputs = instance of SimOutputs
         states = (T, N, 2) array of recorded positions
         energies = (T, 5) array of recorded energies
         total_time = total simulation time in seconds
@@ -30,8 +30,8 @@ def save_run(p, save_path, states, energies, total_time, base_dir = "runs"):
     
     # SAVE DATA FILES
     
-    np.save(run_dir / save_path.states_file, states)
-    np.save(run_dir / save_path.energies_file, energies)
+    np.save(run_dir / outputs.states_file, states)
+    np.save(run_dir / outputs.energies_file, energies)
     
     # BUILD METADATA AND SAVE
     metadata = {
@@ -53,8 +53,8 @@ def save_run(p, save_path, states, energies, total_time, base_dir = "runs"):
                 "seed" : p.seed,
             },
             "outputs": {
-                "states_file"  : save_path.states_file,
-                "energies_file": save_path.energies_file,
+                "states_file"  : outputs.states_file,
+                "energies_file": outputs.energies_file,
             }
         },
         "Created_at"          : time.strftime("%Y-%m-%d %H:%M:%S"),

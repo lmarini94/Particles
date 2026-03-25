@@ -35,7 +35,7 @@ class SimParameters:
     seed: int | None
 
 @dataclass
-class SimIO:
+class SimOutputs:
     states_file: str
     energies_file: str
     

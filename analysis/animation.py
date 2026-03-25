@@ -9,69 +9,30 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from pathlib import Path
-import json, time
+import time
+from load_metadata import select_run, load_data
 
 ###############################################################################
-############################# SELECTION OF RUN ################################
+################################# LOAD DATA ###################################
 ###############################################################################
-
-
-def select_run(latest=True, runs_dir="runs"):
-    
-    runs_dir = Path(__file__).resolve().parent.parent / runs_dir
-    
-    #Check if runs directory exists
-    if not runs_dir.exists():
-        raise FileNotFoundError(f"Runs directory '{runs_dir}' does not exist.")
-
-    runs = sorted([d.name for d in runs_dir.iterdir() if d.is_dir()])
-
-    if not runs:
-        raise RuntimeError("No runs found in directory.")
-
-    if latest:
-        run_name = runs[-1]
-        print(f"Using latest run: {run_name}")
-        return runs_dir / run_name
-
-    # manual selection
-    run_name = input("Enter run timestamp (YYYYMMDD_HHMM): ")
-
-    if run_name not in runs:
-        raise ValueError(f"Run '{run_name}' not found in {runs_dir}")
-    
-    print(f"Using run: {run_name}")
-    return runs_dir / run_name
 
 myrun = select_run()
-
-###############################################################################
-############################### IMPORT DATA ###################################
-###############################################################################
-
-# LOAD CONFIGURATION FILE
-CONFIG_PATH = Path(myrun/"run_parameters.json")
-with open(CONFIG_PATH) as f:
-    config = json.load(f)
-    
-#LOAD STATES AND ENERGIES FILE
-states = np.load(myrun/"states.npy")
-energies = np.load(myrun/"energies.npy")
+metadata, states, energies = load_data(myrun)
 
 #Recall energies is of the type [t_sim, K, U, U_wall, E_tot]
 physical_time = energies[:, 0]
 
 #PHYSICAL PARAMETER
-L = config["parameters"]["physical"]["L"]
-N = config["parameters"]["physical"]["N"]
-K_0 = config["parameters"]["physical"]["K_0"] 
+L = metadata["parameters"]["physical"]["L"]
+N = metadata["parameters"]["physical"]["N"]
+K_0 = metadata["parameters"]["physical"]["K_0"] 
 
 #SIMULATION PARAMETER
-T_MAX = config["parameters"]["simulation"]["T_MAX"]
+T_MAX = metadata["parameters"]["simulation"]["T_MAX"]
 
 #MODEL TIMING
-created_at = config["Created_at"]
-t_tot = config["Simulation_duration"]
+created_at = metadata["Created_at"]
+t_tot = metadata["Simulation_duration"]
 formatted_time = time.strftime("%H:%M:%S", time.gmtime(t_tot))
 
 print("Simulated on " + created_at)

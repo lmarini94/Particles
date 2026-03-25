@@ -50,10 +50,14 @@ def forces_potential_interactions(x, cells, p):
             
             #Check all 5 neighbouring cells
             for nx, ny in neighbors:
+                
+                cxn = cx + nx
+                cyn = cy + ny 
+                
                 #If neighbour goes out of box skip
-                if (cx + nx) < 0 or (cx + nx) >= n_cells or (cy + ny) >= n_cells:
+                if cxn < 0 or cxn >= n_cells or cyn >= n_cells or cyn < 0:
                     continue
-                n = cx + nx + (cy + ny)*n_cells
+                n = cxn + cyn*n_cells
                 B = cells[n]
                 
                 #If neighbouring cell is empty skip

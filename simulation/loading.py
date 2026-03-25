@@ -8,7 +8,7 @@ Created on Tue Mar 17 13:27:33 2026
 import json
 import numpy as np
 from pathlib import Path
-from simulation.models import SimParameters, SimIO
+from simulation.models import SimParameters, SimOutputs
 
 def _validate(p: SimParameters):
     """
@@ -114,11 +114,11 @@ def load_config(path = "CONFIG.json"):
     
     #EXTRACT IO PAHTS
     try: 
-        output_path = SimIO(
+        outputs = SimOutputs(
             states_file = config["outputs"]["states_file"],
             energies_file = config["outputs"]["energies_file"]
             )
     except KeyError as e:
         raise KeyError((f"Missing required config field: {e}"))
         
-    return params, output_path, rng
+    return params, outputs, rng

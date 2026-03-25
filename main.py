@@ -10,11 +10,11 @@ from simulation.core import Simulation
 
 def main():
     #Load simulation parameters, path
-    params, paths, rng = load_config()
+    params, outputs, rng = load_config()
     sim = Simulation(params, rng)
     sim.initialize()
     sim.run()
-    sim.save(paths) 
+    sim.save(outputs) 
 
 if __name__ == "__main__":
     main()

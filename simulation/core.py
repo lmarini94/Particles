@@ -93,7 +93,7 @@ class Simulation:
 
         p = self.params
         start_time = time.time()
-        x_ref = self.state.x
+        x_ref = self.state.x.copy()
         r_skin = p.r_skin
 
         while True:
@@ -112,7 +112,7 @@ class Simulation:
             
             #If particles have moved more than r_skin/2 rebuild cells
             if np.max(np.sum((self.state.x - x_ref)**2, axis=1)) > (r_skin/2)**2:
-                self.state.cells = build_cell(self.state.x, p.n_cells, p.cell_size)
+                self.state.cells = build_cell(self.state.x, p)
                 x_ref = self.state.x.copy()         
             
 
@@ -158,7 +158,7 @@ class Simulation:
     ################################# SAVE ####################################
     ###########################################################################
 
-    def save(self, save_path, base_dir: str | Path = "runs"):
+    def save(self, outputs, base_dir: str | Path = "runs"):
         """
         Saves states, energies and metadata to a timestamped subdirectory.
 
@@ -173,7 +173,7 @@ class Simulation:
         
         save_run(
             self.params, 
-            save_path, 
+            outputs, 
             states_arr, 
             energies_arr, 
             self.total_time, 
