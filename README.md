@@ -29,8 +29,10 @@ Tools for energy monitoring and post-simulation analysis are also provided.
 ├── simulation/          # Core simulation code
 │   ├── forces.py        # Wall and particle forces
 │   ├── integrator.py    # Velocity-Verlet integrator
-│   └── ...             
-├── runs/                # Output folder 
+│   └── ...    
+├── examples/            # Some example runs
+│   └── ... 
+├── runs/                # Output folder (created at first simulation)
 ├── analysis/            # Post processing utilities
 │   ├── analysis.py      # Energy, RDF analysis and plots
 │   ├── animation.py     # Create GIF animation
@@ -43,7 +45,7 @@ This project is written in **Python**.
 
 You will likely need:
 - Python 3.x
-- Common scientific Python packages (typically `numpy`, `matplotlib`)
+- Common scientific Python packages (`numpy`, `matplotlib`, `pathlib`, `time`, `json`, `dataclasses`)
   
 ## Quick start
 

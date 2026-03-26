@@ -14,8 +14,14 @@ from load_metadata import select_run, load_data
 ###############################################################################
 ################################# LOAD DATA ###################################
 ###############################################################################
+s = input("Using last simulation? [y/n]:")
+if s == "y":
+    myrun = select_run()
+elif s == "n":
+    myrun = select_run(False)
+else:
+    print("Invalid input")
 
-myrun = select_run()
 metadata, states, energies = load_data(myrun)
     
 
