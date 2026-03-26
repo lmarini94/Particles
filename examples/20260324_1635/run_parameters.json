@@ -1,0 +1,27 @@
+{
+  "parameters": {
+    "physical": {
+      "N": 256,
+      "L": 100,
+      "d_min": 1.5,
+      "r_c": 4.0,
+      "K_0": 1.2,
+      "delta": 1.0,
+      "k_wall": 5.0
+    },
+    "simulation": {
+      "h": 0.0005,
+      "eps": 0.01,
+      "speed": 1000,
+      "T_MAX": 400,
+      "seed": null
+    },
+    "outputs": {
+      "states_file": "states.npy",
+      "energies_file": "energies.npy"
+    }
+  },
+  "Created_at": "2026-03-24 16:35:57",
+  "Created_at_unix": 1774337757.1742413,
+  "Simulation_duration": 15096.941049337387
+}
